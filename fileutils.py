@@ -5,10 +5,8 @@ More module documentation to come soon. For now, take a look at the File class
 to see what it does.
 """
 
-# This is afn.fileutils inside the AFN project, but it's used just as fileutils
-# nearly everywhere else. Name it what you will.
 # The authoritative version of fileutils can be found at:
-# http://hg.opengroove.org/afn/file/default/afn/python/src/afn/fileutils.py
+# https://raw.github.com/javawizard/fileutils/master/fileutils.py
 
 import os
 import os.path
