@@ -582,6 +582,36 @@ class File(object):
         """
         self.mkdirs(*args, **kwargs)
     
+    def create_folder(self, ignore_existing=False, recursive=False):
+        """
+        Creates the folder referred to by this File object. If it already
+        exists but is not a folder, an exception will be thrown. If it already
+        exists and is a folder, an exception will be thrown if ignore_existing
+        is False (the default); if ignore_existing is True, no exception will
+        be thrown.
+        
+        If the to-be-created folder's parent does not exist and recursive is
+        False, an exception will be thrown. If recursive is True, the folder's
+        parent, its parent's parent, and so on will be created automatically.
+        """
+        # See if we're already a folder
+        if self.is_folder:
+            # We are. If ignore_existing is True, then just return.
+            if ignore_existing:
+                return
+            # If it's not, raise an exception.
+            else:
+                raise Exception("The folder %r already exists." % self.path)
+        else:
+            # We're not a folder. (We don't need to see if we already exist as
+            # e.g. a file as the call to os.mkdir will take care of raising an
+            # exception for us in such a case.) Now create our parent if it
+            # doesn't exist and recursive is True.
+            if recursive and self.parent and not self.parent.exists:
+                self.parent.create_folder(recursive=True)
+            # Now turn ourselves into a folder.
+            os.mkdir(self.path)
+    
     def change_to(self):
         """
         Sets the current working directory to self.
