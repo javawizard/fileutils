@@ -550,37 +550,24 @@ class File(object):
     
     def mkdir(self, silent=False):
         """
-        Creates the folder referred to by this File object. If it already
-        exists but is not a folder, an exception will be thrown. If it already
-        exists and is a folder, an exception will be thrown if silent is
-        False (the default); if silent is True, no exception will be thrown.
+        An obsolete alias for self.create_folder(ignore_existing=silent)
+        present for backward compatibility reasons.
         """
-        if self.is_folder:
-            if silent:
-                return
-            else:
-                raise Exception("The folder %r already exists." % self._path)
-        else:
-            os.mkdir(self._path)
+        self.create_folder(ignore_existing=silent)
     
     def mkdirs(self, silent=False):
         """
-        Same as self.mkdir, but creates parent directories as needed if they do
-        not already exist.
+        An obsolete alias for self.create_folder(ignore_existing=silent,
+        recursive=True) present for backward compatibility reasons.
         """
-        # If we have a parent (we're not / or a drive letter) but it doesn't
-        # exist, recursively create it (and its parent directories as well)
-        if self.parent and not self.parent.exists:
-            self.parent.mkdirs()
-        # Then create ourselves.
-        self.mkdir(silent)
+        self.create_folder(ignore_existing=silent, recursive=True)
     
-    def makedirs(self, *args, **kwargs):
+    def makedirs(self, silent=False):
         """
-        Same as self.mkdirs(*args, **kwargs). Exists mainly because there are
-        two alternate spellings in common use.
+        An obsolete alias for self.create_folder(ignore_existing=silent,
+        recursive=True) present for backward compatibility reasons.
         """
-        self.mkdirs(*args, **kwargs)
+        self.create_folder(ignore_existing=silent, recursive=True)
     
     def create_folder(self, ignore_existing=False, recursive=False):
         """
