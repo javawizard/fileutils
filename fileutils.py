@@ -568,13 +568,12 @@ class File(object):
         Same as self.mkdir, but creates parent directories as needed if they do
         not already exist.
         """
-        if self.is_folder:
-            if silent:
-                return
-            else:
-                raise Exception("The folder %r already exists." % self._path)
-        else:
-            os.makedirs(self._path)
+        # If we have a parent (we're not / or a drive letter) but it doesn't
+        # exist, recursively create it (and its parent directories as well)
+        if self.parent and not self.parent.exists:
+            self.parent.mkdirs()
+        # Then create ourselves.
+        self.mkdir(silent)
     
     def makedirs(self, *args, **kwargs):
         """
