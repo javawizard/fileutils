@@ -3,8 +3,12 @@ An object-oriented file access library for Python.
 
 More module documentation to come soon. For now, take a look at the File class
 to see what it does.
+
+Issues should be filed at http://github.com/javawizard/fileutils/issues.
 """
 
+# This module used to be located in afn/python/src/afn, but it's now its own
+# module with its own repository.
 # The authoritative version of fileutils can be found at:
 # https://raw.github.com/javawizard/fileutils/master/fileutils.py
 
