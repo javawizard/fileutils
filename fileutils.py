@@ -806,9 +806,9 @@ class File(object):
         """
         if not self.is_link:
             return self
-        # Resolve the link relative to itself in case it points to a relative
-        # path
-        target = File(self.path, self.link_target)
+        # Resolve the link relative to its parent in case it points to a
+        # relative path
+        target = File(self.parent.path, self.link_target)
         if recursive:
             return target.dereference(recursive=True)
         else:
