@@ -419,7 +419,7 @@ class File(object):
         A filter function accepting one argument can be specified. It will be
         called for each file and folder. It can return one of True, False,
         SKIP, YIELD, or RECURSE, with the behavior of each outlined in the
-        following table:
+        following table::
             
                                   Don't yield   Do yield
                                 +-------------+----------+
@@ -516,11 +516,11 @@ class File(object):
         This is useful when reading/processing files larger than would
         otherwise fit into memory.
         
-        One could implement, for example, a copy function thus:
+        One could implement, for example, a copy function thus::
         
-        with target.open("wb") as target_stream:
-            for block in source.read_blocks():
-                target_stream.write(block)
+            with target.open("wb") as target_stream:
+                for block in source.read_blocks():
+                    target_stream.write(block)
         """
         with self.open("r" + ("b" if binary else "")) as f:
             data = f.read(block_size)
@@ -623,19 +623,19 @@ class File(object):
         A property that returns a context manager. This context manager sets
         the working directory to self upon being entered and restores it to
         what it previously was upon being exited. One can use this to replace
-        something like:
+        something like::
         
-        old_dir = File()
-        new_dir.cd()
-        try:
-            ...stuff...
-        finally:
-            old_dir.cd()
+            old_dir = File()
+            new_dir.cd()
+            try:
+                ...stuff...
+            finally:
+                old_dir.cd()
         
-        with the much nicer:
+        with the much nicer::
         
-        with new_dir.as_working:
-            ...stuff...
+            with new_dir.as_working:
+                ...stuff...
         
         and get exactly the same effect.
         
@@ -653,28 +653,28 @@ class File(object):
         If contents is True (the default), the files (and folders, and so on
         recursively) contained within this folder will be written directly to
         the zip file. If it's False, the folder will be written itself. The
-        difference is that, given a folder foo which looks like this:
+        difference is that, given a folder foo which looks like this::
         
-        foo/
-            bar
-            baz/
-                qux
-        
-        Specifying contents=False will result in a zip file whose contents look
-        something like:
-        
-        zipfile.zip/
             foo/
                 bar
                 baz/
                     qux
         
-        Whereas specifying contents=True will result in this:
+        Specifying contents=False will result in a zip file whose contents look
+        something like::
         
-        zipfile.zip/
-            bar
-            baz/
-                qux
+            zipfile.zip/
+                foo/
+                    bar
+                    baz/
+                        qux
+        
+        Whereas specifying contents=True will result in this::
+        
+            zipfile.zip/
+                bar
+                baz/
+                    qux
         
         NOTE: This has only been tested on Linux. I still need to test it on
         Windows to make sure pathnames are being handled correctly.
