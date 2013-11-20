@@ -1,6 +1,17 @@
 """
 An object-oriented file access library for Python.
 
+Fileutils is an object-oriented file access library. It provides a consolidated
+filesystem interface that offers, among other things, the following:
+
+* A context manager (:obj:`~File.as_working`) for temporarily
+  switching to a different working directory
+* Several useful properties and methods with no Python standard library
+  equivalent, such as :obj:`~File.ancestors`, :obj:`~File.hash`, and
+  :obj:`~File.delete_on_exit`
+* Functions for working with extended filesystem attributes
+  (:obj:`~File.list_xattrs` among others)
+
 More module documentation to come soon. For now, take a look at the File class
 to see what it does.
 
@@ -187,7 +198,7 @@ class File(object):
     
     def list(self):
         """
-        An obsolete method that simply returns self.children.
+        An obsolete method that simply returns :obj:`self.children <children>`.
         """
         return self.children
     
@@ -204,7 +215,8 @@ class File(object):
     
     def list_names(self):
         """
-        An obsolete method that simply returns self.child_names.
+        An obsolete method that simply returns
+        :obj:`self.child_names <child_names>`.
         """
         return self.child_names
     
@@ -227,7 +239,8 @@ class File(object):
         method that guarantees that the result is a child of self, use
         self.safe_child(...).
         
-        This method is analogous to os.path.join(self.path, *names).
+        This method is analogous to
+        :obj:`os.path.join(self.path, *names) <os.path.join>`.
         """
         return File(os.path.join(self.path, *names))
     
@@ -304,7 +317,8 @@ class File(object):
         """
         A list of all of the ancestors of this file, with self.parent first.
         
-        This property simply returns self.get_ancestors(). Have a look at that
+        This property simply returns
+        :obj:`self.get_ancestors() <get_ancestors>`. Have a look at that
         method if you need to do more complex things like include self as one
         of the returned ancestors.
         """
@@ -368,7 +382,8 @@ class File(object):
     @property
     def path_components(self):
         """
-        A property that simply returns self.get_path_components().
+        A property that simply returns
+        :obj:`self.get_path_components() <get_path_components>`.
         """
         return self.get_path_components()
     
@@ -378,8 +393,9 @@ class File(object):
         pathname. An exception will be thrown if the specified file already
         exists and overwrite is False.
         
-        This does not currently work for folders; I hope to add this ability
-        in the near future.
+        This `does not currently work for folders
+        <https://github.com/javawizard/fileutils/issues/1>`_;
+        I hope to add this ability in the near future.
         """
         other = File(other)
         self.check_file()
@@ -607,15 +623,11 @@ class File(object):
         File instances will continue to work just fine after this is called.
         
         If you need to restore the working directory at any point, you might
-        want to consider using self.as_working instead.
+        want to consider using :obj:`self.as_working <as_working>` instead.
         """
         os.chdir(self._path)
     
-    def cd(self):
-        """
-        An alias for self.change_to().
-        """
-        self.change_to()
+    cd = change_to
     
     @property
     def as_working(self):
@@ -824,12 +836,12 @@ class File(object):
         request.
         
         Note that such files are not absolutely guaranteed to be deleted on
-        exit. Deletion is handled via an atexit hook, so files will not be
+        exit. Deletion is handled via an :obj:`atexit` hook, so files will not be
         deleted if, for example, the interpreter crashes or os._exit() is
         called.
         
         The value of this property is shared among all File instances pointing
-        to a given path. For example:
+        to a given path. For example::
         
             File("test").delete_on_exit = True # Instance 1
             print File("test").delete_on_exit # Instance 2, prints "True"
