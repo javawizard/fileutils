@@ -5,6 +5,7 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 import os
 import hashlib
 from functools import partial as _partial
+import urlparse
 
 try:
     import requests
@@ -26,6 +27,22 @@ class Hierarchy(object):
     @abstractmethod
     def get_path_components(self, relative_to=None):
         pass
+    
+    def same_as(self, other):
+        # True if self' and other's paths mean the same thing, false if they
+        # don't. Mainly useful for URLs, where the idea is that, given:
+        #
+        # a = URL("http://foo/a")
+        # b = URL("http://foo/a/")
+        # 
+        # a == b is False, but a.same_as(b) is True. Can be overridden by
+        # subclasses as needed to implement this sort of logic.
+        if type(self) != type(other):
+            return False
+        return self.path_components == other.path_components
+    
+    def sibling(self, *names):
+        return self.parent.child(*names)
     
     def get_ancestors(self, including_self=False):
         """
@@ -60,7 +77,10 @@ class Hierarchy(object):
         Returns true if this file is a descendant of the specified file. This
         is equivalent to File(other).ancestor_of(self, including_self).
         """
-        return other in self.get_ancestors(including_self)
+        for ancestor in self.get_ancestors(including_self):
+            if other.same_as(ancestor):
+                return True
+        return False
 
     def ancestor_of(self, other, including_self=False):
         """
@@ -73,7 +93,7 @@ class Hierarchy(object):
         Otherwise, only the file's immediate parent, and its parent's parent,
         and so on are considered to be ancestors.
         """
-        return other.descendent_of(self, including_self)
+        return other.descendant_of(self, including_self)
 
     def get_path(self, relative_to=None, separator=None):
         """
@@ -641,7 +661,7 @@ class File(Hierarchy, ChildrenMixin, Listable, Readable, Sizable,
             return open(self.path, "wb")
 
     def __str__(self):
-        return "fileutils.File(%r)" % self._path
+        return "fileutils2.File(%r)" % self._path
     
     __repr__ = __str__
     
@@ -661,8 +681,14 @@ class File(Hierarchy, ChildrenMixin, Listable, Readable, Sizable,
         """
         return True
 
+
 if requests is not None:
-    class URL(Readable):
+    class URL(Readable, Hierarchy):
+        # NOTE: We don't yet handle query parameters and fragments properly;
+        # some things (like self.parent) preserve them, while others (like
+        # self.child) do away with them. Figure out what's the sane thing to
+        # do and do it.
+        
         exists = True
         is_broken = False
         is_file = True
@@ -670,7 +696,12 @@ if requests is not None:
         link_target = None
         
         def __init__(self, url):
-            self._url = url
+            self._url = urlparse.urlparse(url)
+            # Normalize out trailing slashes in the path when comparing URLs.
+            # TODO: We treat http://foo/a and http://foo/a/ as identical both
+            # here and in self.parent, self.child, and so forth; decide if this
+            # is really the right thing to do.
+            self._normal_url = self._url._replace(path=self._url.path.rstrip("/"))
         
         def open_for_reading(self):
             response = requests.get(self._url, stream=True)
@@ -680,6 +711,58 @@ if requests is not None:
             # and raise an exception if we hit EOF before reading that many
             # bytes
             return response.raw
+        
+        def child(self, *names):
+            if not names:
+                return self
+            path = self._url.path
+            if not path.endswith("/"):
+                path = path + "/"
+            new_url = urlparse.urljoin(self._url._replace(path=path).geturl(), names[0])
+            return URL(new_url).child(*names[1:])
+        
+        @property
+        def parent(self, *names):
+            path = self._url.path.rstrip("/")
+            if not path: # Nothing left, so we must be at the root
+                return None
+            base, _, _ = path.rpartition("/")
+            return URL(self._url._replace(path=base).geturl())
+        
+        def get_path_components(self, relative_to=None):
+            if relative_to:
+                raise Exception("URLs don't yet support "
+                                "get_path_components(relative_to=...)")
+            # The list comprehension filters out empty names which are
+            # meaningless to nearly every web server I've used. If there ends
+            # up being a practical need for preserving these somehow, I'll
+            # probably expose them as another property. 
+            return [c for c in self._url.geturl().split("/") if c]
+        
+        @property
+        def url(self):
+            return self._url.geturl()
+            
+        def __str__(self):
+            return "fileutils2.URL(%r)" % self._url.geturl()
+        
+        __repr__ = __str__
+        
+        # Use __cmp__ instead of the rich comparison operators for brevity
+        def __cmp__(self, other):
+            if not isinstance(other, URL):
+                return NotImplemented
+            return cmp(self._url, other._url)
+        
+        def __hash__(self):
+            return hash(self._url)
+        
+        def __nonzero__(self):
+            return True
+        
+        def same_as(self, other):
+            return (Hierarchy.same_as(self, other) and
+                    self._url._replace(path="") == other._url._replace(path=""))
         
 
 
