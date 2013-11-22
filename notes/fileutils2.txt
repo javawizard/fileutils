@@ -6,7 +6,7 @@ I'm not going to worry about things like URL authentication for now (this is par
 
 So, some classes, and the functions they contain:
 
-    File
+    Hierarchy
         ancestor_of (uses ancestors and ==)
         ancestors (uses get_ancestors)
         child
@@ -28,15 +28,15 @@ So, some classes, and the functions they contain:
         list_xattrs
         set_xattr
     Listable
-        child_names (uses children; I expect most instances would want to override this)
-        children (uses child_names and child; not sure which of children and child_names I'm going to provide a default implementation for)
+        child_names (implemented in ChildNamesMixin in terms of children)
+        children (implemented in ChildrenMixin in terms of child_names and child; this would be the one that local files would use)
         glob (unsure how I'm going to do this yet, but would probably use children and name)
         recurse (uses children and, of course, child.recurse)
     Readable
         check_file (uses is_file)
         check_folder (uses is_folder)
         copy_into (uses copy_to, name, and other.child)
-        copy_to (unsure; implementation for Readable would use read_blocks, but implementation for Listable would be different)
+        copy_to (implemented in CopyDataOnlyMixin in terms of read_blocks and CopyRecursivelyMixin in terms of read_blocks, children, and child.copy_to)
         dereference (uses link_target)
         exists
         hash (uses read_blocks)
@@ -76,6 +76,12 @@ I'm also rather conflicted on open_for_reading and open_for_writing as they'd pr
 rename_to is complicated in terms of what, if anything, it should require or inherit from. A pure abstract class providing rename_to wouldn't need to inherit from anything, but a directory-aware default implementation would require Readable (to read the file's contents if it's a file), Listable (to rename the file's children if it's a directory), and Writable (to delete the file after copying it to its new destination). I think I might just leave it as its own pure abstract class without a default implementation for now. (I'm also pretty sure I'd want to provide a per-subclass implementation anyway to use the relevant platform's built-in rename function, which would get us proper rename atomicity on platforms that support it.)
 
 So, now I think I'm going to go fill in the above list with which functions have default implementations and which other functions they're implemented in terms of.
+
+
+
+That's done. And I wrote some of them as mixins, ones where there wasn't one obvious way to do it or where the implementation required functions from another interface.
+
+I think I'm going to start writing things and see how things go now.
 
 
 
