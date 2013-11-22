@@ -29,7 +29,7 @@ So, some classes, and the functions they contain:
         set_xattr
     Listable
         child_names (implemented in ChildNamesMixin in terms of children)
-        children (implemented in ChildrenMixin in terms of child_names and child; this would be the one that local files would use)
+        children (implemented in ChildrenMixin in terms of is_folder, child_names, and child; this would be the one that local files would use)
         glob (unsure how I'm going to do this yet, but would probably use children and name)
         recurse (uses children and, of course, child.recurse)
     Readable
@@ -41,13 +41,13 @@ So, some classes, and the functions they contain:
         exists
         hash (uses read_blocks)
         is_broken
-        is_directory
+        is_directory (uses is_folder)
         is_file
-        is_folder (uses is_directory)
+        is_folder
         is_link (uses link_target)
         link_target
         open_for_reading
-        read (uses read_blocks)
+        read (uses open_for_reading)
         read_blocks (uses open_for_reading)
         valid (uses exists, is_link, and is_broken)
     Sizable

@@ -3,6 +3,8 @@
 
 from abc import ABCMeta, abstractmethod, abstractproperty
 import os
+import hashlib
+from functools import partial as _partial
 
 
 class Hierarchy(object):
@@ -117,7 +119,295 @@ class Hierarchy(object):
         return self.path_components[-1]
 
 
-class File(Hierarchy):
+class Readable(object):
+    __metaclass__ = ABCMeta
+    
+    @abstractproperty
+    def exists(self):
+        pass
+    
+    @abstractproperty
+    def is_broken(self):
+        pass
+    
+    @abstractproperty
+    def is_file(self):
+        pass
+    
+    @abstractproperty
+    def is_folder(self):
+        pass
+    
+    @abstractproperty
+    def link_target(self):
+        pass
+    
+    @abstractmethod
+    def open_for_reading(self):
+        # Should open in "rb" mode
+        pass
+    
+    @property
+    def is_directory(self):
+        return self.is_folder
+    
+    @property
+    def is_link(self):
+        return self.link_target is not None
+    
+    @property
+    def valid(self):
+        return self.exists and (not self.is_link or not self.is_broken)
+
+    def check_folder(self):
+        """
+        Checks to see whether this File refers to a folder. If it doesn't, an
+        exception will be thrown.
+        """
+        if not self.is_folder:
+            raise Exception('"%s" does not exist or is not a directory' % self._path)
+    
+    def check_file(self):
+        """
+        Checks to see whether this File refers to a file. If it doesn't, an
+        exception will be thrown.
+        """
+        if not self.is_file:
+            raise Exception('"%s" does not exist or is not a file' % self._path)
+    
+    def copy_to(self, other, overwrite=False):
+        """
+        Copies the contents of this file to the specified File object or
+        pathname. An exception will be thrown if the specified file already
+        exists and overwrite is False.
+        
+        This `does not currently work for folders
+        <https://github.com/javawizard/fileutils/issues/1>`_;
+        I hope to add this ability in the near future.
+        """
+        # If self.is_folder is True, requires isinstance(self, Listable) and
+        # isinstance(other, Hierarchy) when we implement support for folders.
+        # Requires isinstance(other, Writable) always.
+        self.check_file()
+        # TODO: Use (and catch or pass on) proper exceptions here, EAFP style
+        if other.exists and not overwrite:
+            raise Exception("%r already exists" % other)
+        with other.open_for_writing() as write_to:
+            for block in self.read_blocks():
+                write_to.write(block)
+
+    def copy_into(self, other, overwrite=False):
+        """
+        Copies this file to an identically named file inside the specified
+        folder. This is just shorthand for self.copy_to(other.child(self.name))
+        which, from experience, seems to be by far the most common use case for
+        the copy_to function.
+        """
+        self.copy_to(other.child(self.name), overwrite)
+
+    def dereference(self, recursive=False):
+        """
+        Dereference the symbolic link represented by this file and return a
+        File object pointing to the symbolic link's referent.
+        
+        If recursive is False, a File object pointing directly to the referent
+        will be returned. If recursive is True, the referent itself will be
+        recursively dereferenced, and the returned File will be guaranteed not
+        to be a link.
+        
+        If this file is not a symbolic link, self will be returned.
+        """
+        if not self.is_link:
+            return self
+        # Resolve the link relative to its parent in case it points to a
+        # relative path
+        target = self.parent.child(self.link_target)
+        if recursive:
+            return target.dereference(recursive=True)
+        else:
+            return target
+
+    def hash(self, algorithm=hashlib.md5, return_hex=True):
+        """
+        Compute the hash of this file and return it, as a hexidecimal string.
+        
+        The default algorithm is md5. An alternate constructor from hashlib
+        can be passed as the algorithm parameter; file.hash(hashlib.sha1)
+        would, for example, compute the SHA-1 hash instead.
+        
+        If return_hex is False (it defaults to True), the hash object itself
+        will be returned instead of the return value of its hexdigest() method.
+        One can use this to access the binary hash instead.
+        """
+        hasher = algorithm()
+        with self.open_for_reading() as f:
+            # TODO: Use read_blocks instead; read_blocks didn't exist when this
+            # was written in the original fileutils, but it does now, so use it
+            for block in iter(_partial(f.read, 10), ""):
+                hasher.update(block)
+        if return_hex:
+            hasher = hasher.hexdigest()
+        return hasher
+    
+    def read_blocks(self, block_size=16384):
+        """
+        A generator that yields successive blocks of data from this file. Each
+        block will be no larger than block_size bytes, which defaults to 16384.
+        This is useful when reading/processing files larger than would
+        otherwise fit into memory.
+        
+        One could implement, for example, a copy function thus::
+        
+            with target.open("wb") as target_stream:
+                for block in source.read_blocks():
+                    target_stream.write(block)
+        """
+        with self.open_for_reading() as f:
+            data = f.read(block_size)
+            while data:
+                yield data
+                data = f.read(block_size)
+
+    def read(self):
+        """
+        Read the contents of this file and return them as a string. This is
+        usually a bad idea if the file in question is large, as the entire
+        contents of the file will be loaded into memory.
+        """
+        with self.open_for_reading() as f:
+            return f.read()
+
+
+class Listable(Readable):
+    __metaclass__ = ABCMeta
+    
+    @abstractproperty
+    def children(self):
+        pass
+    
+    @abstractproperty
+    def child_names(self):
+        pass
+
+
+class ChildrenMixin(Listable, Readable):
+    @property
+    def children(self):
+        """
+        A list of all of the children of this file, as a list of File objects.
+        If this file is not a folder, the value of this property is None.
+        """
+        if not self.is_folder:
+            return
+        return [self.child(p) for p in self.child_names]
+
+
+class Sizable(object):
+    __metaclass__ = ABCMeta
+    
+    @abstractproperty
+    def size(self):
+        pass
+
+
+class WorkingDirectory(object):
+    __metaclass__ = ABCMeta
+    
+    @abstractmethod
+    def change_to(self):
+        pass
+    
+    def cd(self):
+        self.change_to()
+    
+    @property
+    def as_working(self):
+        """
+        A property that returns a context manager. This context manager sets
+        the working directory to self upon being entered and restores it to
+        what it previously was upon being exited. One can use this to replace
+        something like::
+        
+            old_dir = File()
+            new_dir.cd()
+            try:
+                ...stuff...
+            finally:
+                old_dir.cd()
+        
+        with the much nicer::
+        
+            with new_dir.as_working:
+                ...stuff...
+        
+        and get exactly the same effect.
+        
+        The context manager's __enter__ returns self (this file), so you can
+        also use an "as" clause on the with statement to get access to the
+        file in case you haven't got it stored in a variable anywhere.
+        """
+        return _AsWorking(self)
+
+
+class _AsWorking(object):
+    """
+    The class of the context managers returned from
+    WorkingDirectory.as_working. See that method's docstring for more
+    information on what this class does.
+    """
+    def __init__(self, folder):
+        self.folder = folder
+    
+    def __enter__(self):
+        self.old = type(self.folder)()
+        self.folder.cd()
+        return self.folder
+    
+    def __exit__(self, *args):
+        self.old.cd()
+
+
+class Writable(object):
+    __metaclass__ = ABCMeta
+    
+    @abstractmethod
+    def create_folder(self, ignore_existing=False, recursive=False):
+        pass
+    
+    @abstractmethod
+    def delete(self, ignore_missing=False):
+        pass
+    
+    @abstractmethod
+    def link_to(self, target):
+        pass
+    
+    @abstractmethod
+    def open_for_writing(self, append=False):
+        pass
+
+#    def append(self, data):
+#        """
+#        Append the specified data to the end of this file.
+#        """
+#        with open(self.path, "ab") as f:
+#            f.write(data)
+
+    def write(self, data, binary=True):
+        """
+        Overwrite this file with the specified data. After this is called,
+        self.size will be equal to len(data), and self.read() will be equal to
+        data. If you want to append data instead, use self.append().
+        
+        If binary is True (the default), the file will be written
+        byte-for-byte. If it's False, the file will be written in text mode. 
+        """
+        with open(self.path, "wb") as f:
+            f.write(data)
+
+
+class File(Hierarchy, ChildrenMixin, Listable, Readable, Sizable,
+           WorkingDirectory, Writable):
     def __init__(self, *path_components):
         r"""
         Creates a new file from the specified path components. Each component
@@ -173,6 +463,198 @@ class File(Hierarchy):
             return self._path.split(os.path.sep)
         else:
             return os.path.relpath(self._path, File(relative_to)._path).split(os.sep)
+
+    @property
+    def child_names(self):
+        if not self.is_folder:
+            return
+        return sorted(os.listdir(self._path))
+
+    @property
+    def is_folder(self):
+        """
+        True if this File is a folder, False if it isn't. If the file/folder
+        doesn't actually exist yet, this will be False.
+        
+        If this file is a symbolic link that points to a folder, this will be
+        True.
+        """
+        return os.path.isdir(self._path)
+
+    @property
+    def is_file(self):
+        """
+        True if this File is a file, False if it isn't. If the file/folder
+        doesn't actually exist yet, this will be False.
+        
+        If this file is a symbolic link that points to a file, this will be
+        True.
+        """
+        return os.path.isfile(self._path)
+
+    @property
+    def exists(self):
+        """
+        True if this file/folder exists, False if it doesn't. This will be True
+        even for broken symbolic links; use self.valid if you want an
+        alternative that returns False for broken symbolic links.
+        """
+        return os.path.lexists(self._path)
+
+    @property
+    def is_link(self):
+        """
+        True if this File is a symbolic link, False if it isn't. This will be
+        True even for broken symbolic links.
+        """
+        return os.path.islink(self._path)
+
+    @property
+    def is_broken(self):
+        """
+        True if this File is a symbolic link that is broken, False if it isn't.
+        """
+        return self.is_link and not os.path.exists(self._path)
+
+    @property
+    def link_target(self):
+        """
+        Returns the target to which this file, which is expected to be a
+        symbolic link, points, as a string. If this file is not a symbolic
+        link, None is returned.
+        """
+        if not self.is_link:
+            return None
+        return os.readlink(self._path)
+    
+    def open_for_reading(self):
+        return open(self.path, "rb")
+
+    @property
+    def size(self):
+        """
+        The size, in bytes, of this file. This is the number of bytes that the
+        file contains; the number of actual bytes of disk space it consumes is
+        usually larger.
+        
+        If this file is actually a folder, the sizes of its child files and
+        folders will be recursively summed up and returned. This can take quite
+        some time for large folders.
+        """
+        if self.is_folder:
+            return sum(f.size for f in self.children)
+        elif self.is_file:
+            return os.path.getsize(self.path)
+        else: # Broken symbolic link or some other type of file
+            return 0
+
+    def change_to(self):
+        """
+        Sets the current working directory to self.
+        
+        Since File instances internally store paths in absolute form, other
+        File instances will continue to work just fine after this is called.
+        
+        If you need to restore the working directory at any point, you might
+        want to consider using :obj:`self.as_working <as_working>` instead.
+        """
+        os.chdir(self.path)
+
+    def create_folder(self, ignore_existing=False, recursive=False):
+        """
+        Creates the folder referred to by this File object. If it already
+        exists but is not a folder, an exception will be thrown. If it already
+        exists and is a folder, an exception will be thrown if ignore_existing
+        is False (the default); if ignore_existing is True, no exception will
+        be thrown.
+        
+        If the to-be-created folder's parent does not exist and recursive is
+        False, an exception will be thrown. If recursive is True, the folder's
+        parent, its parent's parent, and so on will be created automatically.
+        """
+        # See if we're already a folder
+        if self.is_folder:
+            # We are. If ignore_existing is True, then just return.
+            if ignore_existing:
+                return
+            # If it's not, raise an exception. TODO: EAFP
+            else:
+                raise Exception("The folder %r already exists." % self.path)
+        else:
+            # We're not a folder. (We don't need to see if we already exist as
+            # e.g. a file as the call to os.mkdir will take care of raising an
+            # exception for us in such a case.) Now create our parent if it
+            # doesn't exist and recursive is True.
+            if recursive and self.parent and not self.parent.exists:
+                self.parent.create_folder(recursive=True)
+            # Now turn ourselves into a folder.
+            os.mkdir(self.path)
+
+    def delete(self, contents=False, ignore_missing=False):
+        """
+        Deletes this file or folder, recursively deleting children if
+        necessary.
+        
+        The contents parameter has no effect, and is present for backward
+        compatibility.
+        
+        If the file does not exist and ignore_missing is False, an exception
+        will be thrown. If the file does not exist but ignore_missing is True,
+        this function simply does nothing.
+        
+        Note that symbolic links are never recursed into, and are instead
+        themselves removed.
+        """
+        if not self.exists:
+            if not ignore_missing:
+                raise Exception("This file does not exist.")
+        elif self.is_folder and not self.is_link:
+            for child in self.children:
+                child.delete()
+            os.rmdir(self.path)
+        else:
+            os.remove(self._path)
+
+    def link_to(self, other):
+        """
+        Creates this file as a symbolic link pointing to other, which can be
+        a pathname or a File object. Note that if it's a pathname, a symbolic
+        link will be created with the exact path specified; it will therefore
+        be absolute if the path is absolute or relative (to the link itself) if
+        the path is relative. If a File object, however, is used, the symbolic
+        link will always be absolute.
+        """
+        if isinstance(other, File):
+            os.symlink(other.path, self._path)
+        else:
+            os.symlink(other, self._path)
+    
+    def open_for_writing(self, append=False):
+        if append:
+            return open(self.path, "ab")
+        else:
+            return open(self.path, "wb")
+
+    def __str__(self):
+        return "fileutils.File(%r)" % self._path
+    
+    __repr__ = __str__
+    
+    # Use __cmp__ instead of the rich comparison operators for brevity
+    def __cmp__(self, other):
+        if not isinstance(other, File):
+            return NotImplemented
+        return cmp(os.path.normcase(self.path), os.path.normcase(other.path))
+    
+    def __hash__(self):
+        return hash(os.path.normcase(self.path))
+    
+    def __nonzero__(self):
+        """
+        Returns True. File objects are always true values; to test for their
+        existence, use self.exists instead.
+        """
+        return True
 
 
 
