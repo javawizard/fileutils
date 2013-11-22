@@ -7,10 +7,10 @@ I'm not going to worry about things like URL authentication for now (this is par
 So, some classes, and the functions they contain:
 
     Hierarchy
-        ancestor_of (uses ancestors and ==)
+        ancestor_of (uses other.descendent_of)
         ancestors (uses get_ancestors)
         child
-        descendent_of (uses ancestor_of)
+        descendent_of (uses ancestors and ==)
         get_ancestors (uses parent)
         get_path (uses get_path_components)
         get_path_components
