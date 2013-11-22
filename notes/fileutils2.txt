@@ -1,0 +1,97 @@
+I'm going to be reworking fileutils to provide an abstract API for manipulating file-ish things, and then there'll be several different implementations, one being a local implementation like fileutils currently is, and others being a URL implementation, an implementation able to modify things on a remote machine via ssh and sftp (which will most likely use paramiko), and implementations sitting on top of SMB and FTP.
+
+So, I'll be splitting up File's methods into several different abstract classes, each of which providing a bit of functionality. The various implementations need not implement all of the abstract classes; URL, for example, won't implement the class permitting listing of a directory's contents, although a future DAVURL subclass would.
+
+I'm not going to worry about things like URL authentication for now (this is particularly hard because URLs can link, via redirects, to URLs on other hosts, so this really needs to be thought out). They'll come later.
+
+So, some classes, and the functions they contain:
+
+    File
+        ancestor_of
+        ancestors
+        check_file
+        check_folder
+        child
+        descendent_of
+        get_ancestors
+        get_path
+        get_path_components
+        name
+        parent
+        path
+        path_components
+        safe_child
+        sibling
+    ExtendedAttributes
+        check_xattr
+        delete_xattr
+        get_xattr
+        has_xattr
+        list_xattrs
+        set_xattr
+    Listable
+        child_names
+        children
+        glob
+        recurse
+    Readable
+        copy_into (other.child(self.name) must be Writable)
+        copy_to (other must be Writable)
+        dereference
+        exists
+        hash
+        is_broken
+        is_directory
+        is_file
+        is_folder
+        is_link
+        link_target
+        open_for_reading
+        read
+        read_blocks
+        size
+        valid
+    Sizable
+        size
+    WorkingDirectory
+        as_working
+        change_to/cd
+    Writable
+        append
+        create_folder
+        delete
+        link_to
+        open_for_writing
+        write
+
+Uncategorized:
+    delete_on_exit
+    open_for_random_access
+    rename_to
+
+
+I'm skipping delete_on_exit for now; I'll categorize that later, but I'm pretty sure I'll start out with only local files implementing that.
+
+I'm also rather conflicted on open_for_reading and open_for_writing as they'd preclude using any of the other file modes Python provides... I might just provide open() for local files only and open_for_reading and open_for_writing for everything.
+
+rename_to is complicated in terms of what, if anything, it should require or inherit from. A pure abstract class providing rename_to wouldn't need to inherit from anything, but a directory-aware default implementation would require Readable (to read the file's contents if it's a file), Listable (to rename the file's children if it's a directory), and Writable (to delete the file after copying it to its new destination). I think I might just leave it as its own pure abstract class without a default implementation for now. (I'm also pretty sure I'd want to provide a per-subclass implementation anyway to use the relevant platform's built-in rename function, which would get us proper rename atomicity on platforms that support it.) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
