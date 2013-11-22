@@ -6,6 +6,11 @@ import os
 import hashlib
 from functools import partial as _partial
 
+try:
+    import requests
+except ImportError:
+    requests = None
+
 
 class Hierarchy(object):
     __metaclass__ = ABCMeta
@@ -655,6 +660,27 @@ class File(Hierarchy, ChildrenMixin, Listable, Readable, Sizable,
         existence, use self.exists instead.
         """
         return True
+
+if requests is not None:
+    class URL(Readable):
+        exists = True
+        is_broken = False
+        is_file = True
+        is_folder = False
+        link_target = None
+        
+        def __init__(self, url):
+            self._url = url
+        
+        def open_for_reading(self):
+            response = requests.get(self._url, stream=True)
+            response.raise_for_status()
+            response.raw.decode_content=True
+            # TODO: Add hooks here to check the content-length response header
+            # and raise an exception if we hit EOF before reading that many
+            # bytes
+            return response.raw
+        
 
 
 
