@@ -6,11 +6,22 @@ import os
 import hashlib
 from functools import partial as _partial
 import urlparse
+import stat
 
 try:
     import requests
 except ImportError:
     requests = None
+
+try:
+    import paramiko
+except ImportError:
+    paramiko = None
+
+
+FILE = "fileutils2.FILE"
+FOLDER = "fileutils2.FOLDER"
+LINK = "fileutils2.LINK"
 
 
 class Hierarchy(object):
@@ -148,19 +159,12 @@ class Readable(object):
     __metaclass__ = ABCMeta
     
     @abstractproperty
-    def exists(self):
-        pass
-    
-    @abstractproperty
-    def is_broken(self):
-        pass
-    
-    @abstractproperty
-    def is_file(self):
-        pass
-    
-    @abstractproperty
-    def is_folder(self):
+    def type(self):
+        """
+        The type of this file. This can be one of FILE, FOLDER, or LINK (I
+        don't yet have constants for block/character special devices; those
+        will come soon.) If the file does not exist, this should be None.
+        """
         pass
     
     @abstractproperty
@@ -173,17 +177,33 @@ class Readable(object):
         pass
     
     @property
+    def exists(self):
+        return self.type is not None
+
+    @property
+    def valid(self):
+        return self.dereference().exists
+    
+    @property
+    def is_broken(self):
+        return self.is_link and not self.dereference().exists
+    
+    @property
+    def is_file(self):
+        return self.dereference().type is FILE
+    
+    @property
+    def is_folder(self):
+        return self.dereference().type is FOLDER
+    
+    @property
     def is_directory(self):
         return self.is_folder
     
     @property
     def is_link(self):
-        return self.link_target is not None
+        return self.type is LINK
     
-    @property
-    def valid(self):
-        return self.exists and (not self.is_link or not self.is_broken)
-
     def check_folder(self):
         """
         Checks to see whether this File refers to a folder. If it doesn't, an
@@ -494,52 +514,20 @@ class File(Hierarchy, ChildrenMixin, Listable, Readable, Sizable,
         if not self.is_folder:
             return
         return sorted(os.listdir(self._path))
-
+    
     @property
-    def is_folder(self):
-        """
-        True if this File is a folder, False if it isn't. If the file/folder
-        doesn't actually exist yet, this will be False.
-        
-        If this file is a symbolic link that points to a folder, this will be
-        True.
-        """
-        return os.path.isdir(self._path)
-
-    @property
-    def is_file(self):
-        """
-        True if this File is a file, False if it isn't. If the file/folder
-        doesn't actually exist yet, this will be False.
-        
-        If this file is a symbolic link that points to a file, this will be
-        True.
-        """
-        return os.path.isfile(self._path)
-
-    @property
-    def exists(self):
-        """
-        True if this file/folder exists, False if it doesn't. This will be True
-        even for broken symbolic links; use self.valid if you want an
-        alternative that returns False for broken symbolic links.
-        """
-        return os.path.lexists(self._path)
-
-    @property
-    def is_link(self):
-        """
-        True if this File is a symbolic link, False if it isn't. This will be
-        True even for broken symbolic links.
-        """
-        return os.path.islink(self._path)
-
-    @property
-    def is_broken(self):
-        """
-        True if this File is a symbolic link that is broken, False if it isn't.
-        """
-        return self.is_link and not os.path.exists(self._path)
+    def type(self):
+        try:
+            stat = os.stat(self.path)
+        except os.error: # File doesn't exist
+            return None
+        if stat.S_ISREG(stat):
+            return FILE
+        if stat.S_ISDIR(stat):
+            return FOLDER
+        if stat.S_ISLNK(stat):
+            return LINK
+        return "fileutils2.OTHER"
 
     @property
     def link_target(self):
@@ -682,17 +670,14 @@ class File(Hierarchy, ChildrenMixin, Listable, Readable, Sizable,
         return True
 
 
-if requests is not None:
+if requests:
     class URL(Readable, Hierarchy):
         # NOTE: We don't yet handle query parameters and fragments properly;
         # some things (like self.parent) preserve them, while others (like
         # self.child) do away with them. Figure out what's the sane thing to
         # do and do it.
         
-        exists = True
-        is_broken = False
-        is_file = True
-        is_folder = False
+        type = FILE
         link_target = None
         
         def __init__(self, url):
@@ -763,7 +748,46 @@ if requests is not None:
         def same_as(self, other):
             return (Hierarchy.same_as(self, other) and
                     self._url._replace(path="") == other._url._replace(path=""))
+
+
+if paramiko:
+    class SSHFile(Readable, Hierarchy):
+        def __init__(self, client, path_components):
+            if self.path_components[0] != "":
+                raise ValueError
+            self._client = client
+            self._path_components = path_components
         
+        @property
+        def get_path_components(self, relative_to=None):
+            return list(self._path_components)
+        
+        @property
+        def parent(self):
+            if len(self.path_components) == 1:
+                return None
+            return SSHFile(self._client, self._path_components[:-1])
+        
+        def child(self, *names):
+            # FIXME: Implement absolute paths
+            return SSHFile(self._client, self._path_components + names)
+        
+        @property
+        def link_target(self):
+            if self.is_link:
+                return self._client.readlink(self.path)
+        
+        def open_for_reading(self):
+            return self._client.open(self.path, "rb")
+        
+        @property
+        def type(self):
+            # TODO: Account for nonexistent files
+            stat = self._client.stat(self.path)
+            if stat.S_ISREG(stat.st_mode):
+                return FILE
+            if stat.S_ISDIR(stat.st_mode):
+                return FOLDER
 
 
 
