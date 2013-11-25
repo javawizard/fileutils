@@ -7,6 +7,11 @@ import hashlib
 from functools import partial as _partial
 import urlparse
 import stat
+# Import platform-specific os.path libraries for manipulating paths in SSHFile
+# and SMBFile, respectively. Both of these modules are just ordinary parts of
+# the standard library, and as such are available on all platforms.
+import posixpath
+import ntpath
 
 try:
     import requests
@@ -29,15 +34,39 @@ class Hierarchy(object):
     
     @abstractmethod
     def child(self, *names):
-        pass
+        """
+        Returns a file object representing the child of this file with the
+        specified name. If multiple names are present, they will be joined
+        together. If no names are present, self will be returned.
+        
+        If any names are absolute, all names before them (and self) will be
+        discarded. Relative names (like "..") are also allowed. If you want a
+        method that guarantees that the result is a child of self, use
+        self.safe_child(...).
+        
+        This method is analogous to
+        :obj:`os.path.join(self.path, *names) <os.path.join>`.
+        """
     
     @abstractproperty
     def parent(self):
-        pass
+        """
+        Returns a file representing the parent of this file. If this file has
+        no parent (for example, if it's "/" on Unix-based operating systems or
+        a drive letter on Windows), None will be returned.
+        """
     
     @abstractmethod
     def get_path_components(self, relative_to=None):
-        pass
+        """
+        Returns a list of the components in this file's path, including (on
+        POSIX-compliant systems) an empty leading component for absolute paths.
+        
+        If relative_to is specified, the returned set of components will
+        represent a relative path, the path of this file relative to the
+        specified one. Otherwise, the returned components will represent an
+        absolute path.
+        """
     
     def same_as(self, other):
         # True if self' and other's paths mean the same thing, false if they
@@ -157,6 +186,8 @@ class Hierarchy(object):
 
 class Readable(object):
     __metaclass__ = ABCMeta
+    
+    _default_block_size = 16384
     
     @abstractproperty
     def type(self):
@@ -285,16 +316,13 @@ class Readable(object):
         One can use this to access the binary hash instead.
         """
         hasher = algorithm()
-        with self.open_for_reading() as f:
-            # TODO: Use read_blocks instead; read_blocks didn't exist when this
-            # was written in the original fileutils, but it does now, so use it
-            for block in iter(_partial(f.read, 10), ""):
-                hasher.update(block)
+        for block in self.read_blocks():
+            hasher.update(block)
         if return_hex:
             hasher = hasher.hexdigest()
         return hasher
     
-    def read_blocks(self, block_size=16384):
+    def read_blocks(self, block_size=None):
         """
         A generator that yields successive blocks of data from this file. Each
         block will be no larger than block_size bytes, which defaults to 16384.
@@ -307,6 +335,8 @@ class Readable(object):
                 for block in source.read_blocks():
                     target_stream.write(block)
         """
+        if block_size is None:
+            block_size = self._default_block_size
         with self.open_for_reading() as f:
             data = f.read(block_size)
             while data:
@@ -342,9 +372,10 @@ class ChildrenMixin(Listable, Readable):
         A list of all of the children of this file, as a list of File objects.
         If this file is not a folder, the value of this property is None.
         """
-        if not self.is_folder:
-            return
-        return [self.child(p) for p in self.child_names]
+        child_names = self.child_names
+        if child_names is None:
+            return None
+        return [self.child(p) for p in child_names]
 
 
 class Sizable(object):
@@ -518,14 +549,14 @@ class File(Hierarchy, ChildrenMixin, Listable, Readable, Sizable,
     @property
     def type(self):
         try:
-            stat = os.stat(self.path)
+            s = os.lstat(self.path)
         except os.error: # File doesn't exist
             return None
-        if stat.S_ISREG(stat):
+        if stat.S_ISREG(s):
             return FILE
-        if stat.S_ISDIR(stat):
+        if stat.S_ISDIR(s):
             return FOLDER
-        if stat.S_ISLNK(stat):
+        if stat.S_ISLNK(s):
             return LINK
         return "fileutils2.OTHER"
 
@@ -688,8 +719,42 @@ if requests:
             # is really the right thing to do.
             self._normal_url = self._url._replace(path=self._url.path.rstrip("/"))
         
+        @property
+        def type(self):
+            response = requests.head(self._url.geturl(), allow_redirects=False)
+            if response.status_code == requests.codes.ok:
+                return FILE
+            elif response.status_code in (requests.codes.moved_permanently,
+                                          requests.codes.found,
+                                          requests.codes.temporary_redirect,
+                                          requests.codes.see_other):
+                return LINK
+            else:
+                return None
+        
+        @property
+        def link_target(self):
+            response = requests.head(self._url.geturl(), allow_redirects=False)
+            if response.status_code in (requests.codes.moved_permanently,
+                                        requests.codes.found,
+                                        requests.codes.temporary_redirect,
+                                        requests.codes.see_other):
+                return response.headers["Location"]
+            else:
+                return None
+
+        def dereference(self, recursive=False):
+            link_target = self.link_target
+            if link_target is None: # We're not a redirect
+                return self
+            target = (self.parent or self).child(link_target)
+            if recursive:
+                return target.dereference(recursive=True)
+            else:
+                return target
+            
         def open_for_reading(self):
-            response = requests.get(self._url, stream=True)
+            response = requests.get(self._url.geturl(), stream=True)
             response.raise_for_status()
             response.raw.decode_content=True
             # TODO: Add hooks here to check the content-length response header
@@ -722,7 +787,7 @@ if requests:
             # meaningless to nearly every web server I've used. If there ends
             # up being a practical need for preserving these somehow, I'll
             # probably expose them as another property. 
-            return [c for c in self._url.geturl().split("/") if c]
+            return [""] + [c for c in self._url.path.split("/") if c]
         
         @property
         def url(self):
@@ -751,44 +816,112 @@ if requests:
 
 
 if paramiko:
-    class SSHFile(Readable, Hierarchy):
-        def __init__(self, client, path_components):
-            if self.path_components[0] != "":
-                raise ValueError
-            self._client = client
-            self._path_components = path_components
+    class SSHFile(ChildrenMixin, Listable, Readable, Hierarchy, Writable):
+        _default_block_size = 2**19 # 512 KB
         
-        @property
+        def __init__(self, client, path):
+            self._client = client
+            self._path = posixpath.normpath(path)
+        
         def get_path_components(self, relative_to=None):
-            return list(self._path_components)
+            if relative_to:
+                raise NotImplementedError
+            return self._path.split("/")
         
         @property
         def parent(self):
-            if len(self.path_components) == 1:
+            parent = posixpath.dirname(self._path)
+            if parent == self._path:
                 return None
-            return SSHFile(self._client, self._path_components[:-1])
+            return SSHFile(self._client, parent)
         
         def child(self, *names):
             # FIXME: Implement absolute paths
-            return SSHFile(self._client, self._path_components + names)
+            return SSHFile(self._client, posixpath.join(self._path, *names))
         
         @property
         def link_target(self):
             if self.is_link:
                 return self._client.readlink(self.path)
+            else:
+                return None
         
         def open_for_reading(self):
             return self._client.open(self.path, "rb")
         
         @property
         def type(self):
-            # TODO: Account for nonexistent files
-            stat = self._client.stat(self.path)
-            if stat.S_ISREG(stat.st_mode):
+            try:
+                s = self._client.lstat(self.path)
+            except IOError:
+                return None
+            if stat.S_ISREG(s.st_mode):
                 return FILE
-            if stat.S_ISDIR(stat.st_mode):
+            if stat.S_ISDIR(s.st_mode):
                 return FOLDER
+            if stat.S_ISLNK(s.st_mode):
+                return LINK
+            return "fileutils2.OTHER"
+        
+        @property
+        def child_names(self):
+            try:
+                return sorted(self._client.listdir(self._path))
+            # TODO: This could mask permissions issues and such, but I'm not
+            # sure there's a better way to do it without incuring extra (and
+            # usually unneeded) requests against the connection
+            except IOError:
+                return None
+        
+        def create_folder(self, ignore_existing=False, recursive=False):
+            if recursive:
+                self.parent.create_folder(ignore_existing=True, recursive=True)
+            try:
+                self._client.mkdir(self._path)
+            except IOError:
+                if self.is_folder and ignore_existing:
+                    return
+                else:
+                    raise
+        
+        def delete(self, ignore_missing=False):
+            try:
+                file_type = self.type
+                if file_type is FOLDER: # Folder that's not a link
+                    for child in self.children:
+                        child.delete()
+                if file_type is FOLDER:
+                    self._client.rmdir(self._path)
+                else:
+                    self._client.remove(self._path)
+            except IOError:
+                if not self.exists and ignore_missing:
+                    return
+                else:
+                    raise
+        
+        def link_to(self, other):
+            if isinstance(other, SSHFile):
+                self._client.symlink(other.path, self.path)
+            elif isinstance(other, basestring):
+                self._client.symlink(other, self.path)
+            else:
+                raise ValueError("Can't make a symlink from {!r} to {!r}".format(self, other))
+        
+        def open_for_writing(self, append=False):
+            return self._client.open(self.path, "wb")
 
+        def __str__(self):
+            return "<fileutils2.SSHFile {!r} connected to {!r}>".format(self._path, self._client)
+        
+        __repr__ = __str__
+    
+    def ssh_connect(host, username):
+        import getpass
+        t = paramiko.Transport((host, 22))
+        t.connect(username=username, password=getpass.getpass("Password: "))
+        sftp = t.open_sftp_client()
+        return sftp
 
 
 
