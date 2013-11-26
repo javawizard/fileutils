@@ -181,6 +181,10 @@ class Readable(object):
     def open_for_reading(self):
         # Should open in "rb" mode
         pass
+
+    @abstractproperty
+    def size(self):
+        pass
     
     @property
     def exists(self):
@@ -337,14 +341,6 @@ class Listable(Readable):
     
     @abstractproperty
     def child_names(self):
-        pass
-
-
-class Sizable(object):
-    __metaclass__ = ABCMeta
-    
-    @abstractproperty
-    def size(self):
         pass
 
 

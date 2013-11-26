@@ -1,10 +1,13 @@
 
-from fileutils2.interface import Hierarchy, Listable, Readable, Sizable
+from fileutils2.interface import Hierarchy, Listable, Readable
 from fileutils2.interface import WorkingDirectory, Writable
 from fileutils2.mixins import ChildrenMixin
+from fileutils2.constants import FILE, FOLDER, LINK
+import os.path
+import stat
 
-class File(Hierarchy, ChildrenMixin, Listable, Readable, Sizable,
-           WorkingDirectory, Writable):
+class File(Hierarchy, ChildrenMixin, Listable, Readable, WorkingDirectory,
+           Writable):
     def __init__(self, *path_components):
         r"""
         Creates a new file from the specified path components. Each component
