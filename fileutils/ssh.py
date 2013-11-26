@@ -56,6 +56,7 @@ if paramiko:
         
         def __enter__(self):
             self._enter_count += 1
+            return self
         
         def __exit__(self, *args):
             self._enter_count -= 1
@@ -158,6 +159,12 @@ if paramiko:
                 self._client.rename(self._path, other._path)
             else:
                 return ReadWrite.rename_to(self, other)
+        
+        @property
+        def size(self):
+            raise NotImplementedError("paramiko.SFTPClient doesn't have "
+                                      "built-in support for detecting file "
+                                      "sizes")
 
         def __str__(self):
             if self._client_name:
