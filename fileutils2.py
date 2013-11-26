@@ -12,6 +12,7 @@ import stat
 # the standard library, and as such are available on all platforms.
 import posixpath
 import ntpath
+import getpass
 
 try:
     import requests
@@ -819,9 +820,32 @@ if paramiko:
     class SSHFile(ChildrenMixin, Listable, Readable, Hierarchy, Writable):
         _default_block_size = 2**19 # 512 KB
         
-        def __init__(self, client, path):
+        def __init__(self, client, client_name=None, path="/"):
             self._client = client
+            self._client_name = client_name
             self._path = posixpath.normpath(path)
+            self._enter_count = 0
+        
+        @staticmethod
+        def connect_with_password(host, username, password, port=22):
+            transport = paramiko.Transport((host, port))
+            transport.connect(username=username, password=password)
+            sftp_client = transport.open_sftp_client()
+            return SSHFile(sftp_client, username + "@" + host)
+        
+        def _with_path(self, new_path):
+            return SSHFile(self._client, self._client_name, new_path)
+        
+        def __enter__(self):
+            self._enter_count += 1
+        
+        def __exit__(self, *args):
+            self._enter_count -= 1
+            if self._enter_count == 0:
+                self.disconnect()
+        
+        def disconnect(self):
+            self._client.get_channel().get_transport().close()
         
         def get_path_components(self, relative_to=None):
             if relative_to:
@@ -833,11 +857,11 @@ if paramiko:
             parent = posixpath.dirname(self._path)
             if parent == self._path:
                 return None
-            return SSHFile(self._client, parent)
+            return self._with_path(parent)
         
         def child(self, *names):
             # FIXME: Implement absolute paths
-            return SSHFile(self._client, posixpath.join(self._path, *names))
+            return self._with_path(posixpath.join(self._path, *names))
         
         @property
         def link_target(self):
@@ -912,7 +936,10 @@ if paramiko:
             return self._client.open(self.path, "wb")
 
         def __str__(self):
-            return "<fileutils2.SSHFile {!r} connected to {!r}>".format(self._path, self._client)
+            if self._client_name:
+                return "<fileutils2.SSHFile {!r} on {!s}>".format(self._path, self._client_name)
+            else:
+                return "<fileutils2.SSHFile {!r} on {!s}>".format(self._path, self._client)
         
         __repr__ = __str__
     
