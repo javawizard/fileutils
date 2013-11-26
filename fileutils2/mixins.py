@@ -1,5 +1,5 @@
 
-from fileutils2.interface import Listable, Readable
+from fileutils.interface import Listable, Readable
 
 class ChildrenMixin(Listable, Readable):
     @property

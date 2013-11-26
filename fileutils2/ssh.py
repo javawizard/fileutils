@@ -1,8 +1,8 @@
 
-from fileutils2.interface import Listable, Readable, Hierarchy, Writable
-from fileutils2.interface import ReadWrite
-from fileutils2.mixins import ChildrenMixin
-from fileutils2.constants import FILE, FOLDER, LINK
+from fileutils.interface import Listable, Readable, Hierarchy, Writable
+from fileutils.interface import ReadWrite
+from fileutils.mixins import ChildrenMixin
+from fileutils.constants import FILE, FOLDER, LINK
 import posixpath
 import stat
 
@@ -103,7 +103,7 @@ if paramiko:
                 return FOLDER
             if stat.S_ISLNK(s.st_mode):
                 return LINK
-            return "fileutils2.OTHER"
+            return "fileutils.OTHER"
         
         @property
         def child_names(self):
@@ -161,9 +161,9 @@ if paramiko:
 
         def __str__(self):
             if self._client_name:
-                return "<fileutils2.SSHFile {!r} on {!s}>".format(self._path, self._client_name)
+                return "<fileutils.SSHFile {!r} on {!s}>".format(self._path, self._client_name)
             else:
-                return "<fileutils2.SSHFile {!r} on {!s}>".format(self._path, self._client)
+                return "<fileutils.SSHFile {!r} on {!s}>".format(self._path, self._client)
         
         __repr__ = __str__
     

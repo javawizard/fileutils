@@ -4,7 +4,7 @@ Abstract classes.
 
 from abc import ABCMeta, abstractmethod, abstractproperty
 import os.path
-from fileutils2.constants import FILE, FOLDER, LINK, YIELD, RECURSE
+from fileutils.constants import FILE, FOLDER, LINK, YIELD, RECURSE
 import hashlib
 
 class Hierarchy(object):

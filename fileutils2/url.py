@@ -1,6 +1,6 @@
 
-from fileutils2.interface import Hierarchy, Readable
-from fileutils2.constants import FILE, LINK
+from fileutils.interface import Hierarchy, Readable
+from fileutils.constants import FILE, LINK
 import urlparse
 
 try:
@@ -121,7 +121,7 @@ if requests:
             return self._url.geturl()
             
         def __str__(self):
-            return "fileutils2.URL(%r)" % self._url.geturl()
+            return "fileutils.URL(%r)" % self._url.geturl()
         
         __repr__ = __str__
         

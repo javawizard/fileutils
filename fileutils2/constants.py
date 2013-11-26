@@ -1,9 +1,9 @@
 
 
-FILE = "fileutils2.FILE"
-FOLDER = "fileutils2.FOLDER"
-LINK = "fileutils2.LINK"
+FILE = "fileutils.FILE"
+FOLDER = "fileutils.FOLDER"
+LINK = "fileutils.LINK"
 
-YIELD = "fileutils2.YIELD"
-RECURSE = "fileutils2.RECURSE"
-SKIP = "fileutils2.SKIP"
+YIELD = "fileutils.YIELD"
+RECURSE = "fileutils.RECURSE"
+SKIP = "fileutils.SKIP"

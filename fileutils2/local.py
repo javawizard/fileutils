@@ -1,8 +1,8 @@
 
-from fileutils2.interface import Hierarchy, Listable, Readable
-from fileutils2.interface import WorkingDirectory, Writable, ReadWrite
-from fileutils2.mixins import ChildrenMixin
-from fileutils2.constants import FILE, FOLDER, LINK
+from fileutils.interface import Hierarchy, Listable, Readable
+from fileutils.interface import WorkingDirectory, Writable, ReadWrite
+from fileutils.mixins import ChildrenMixin
+from fileutils.constants import FILE, FOLDER, LINK
 import os.path
 import stat
 from contextlib import closing
@@ -85,7 +85,7 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
             return FOLDER
         if stat.S_ISLNK(s):
             return LINK
-        return "fileutils2.OTHER"
+        return "fileutils.OTHER"
 
     @property
     def link_target(self):
@@ -285,7 +285,7 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
             zipfile.extractall(folder.path)
 
     def __str__(self):
-        return "fileutils2.File(%r)" % self._path
+        return "fileutils.File(%r)" % self._path
     
     __repr__ = __str__
     
