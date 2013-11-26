@@ -1,6 +1,6 @@
 
 from fileutils2.interface import Hierarchy, Readable
-from fileutils2.constants import FILE, FOLDER, LINK
+from fileutils2.constants import FILE, LINK
 import urlparse
 
 try:
@@ -49,6 +49,20 @@ if requests:
                 return response.headers["Location"]
             else:
                 return None
+        
+        @property
+        def size(self):
+            response = requests.head(self.dereference(recursive=True)._url.geturl())
+            if response.status_code == 200:
+                try:
+                    return int(response.headers["content-length"])
+                except KeyError: # Fallback
+                    size = 0
+                    for block in self.read_blocks():
+                        size += len(block)
+                    return size
+            else:
+                return 0
 
         def dereference(self, recursive=False):
             link_target = self.link_target
