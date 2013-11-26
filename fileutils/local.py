@@ -8,6 +8,17 @@ import stat
 from contextlib import closing
 import zipfile as zip_module
 import glob as _glob
+import tempfile
+import atexit
+
+# Set of File objects whose delete_on_exit property has been set to True. These
+# are deleted by the atexit hook registered two lines down.
+_delete_on_exit = set()
+@atexit.register
+def _():
+    for f in _delete_on_exit:
+        f.delete(ignore_missing=True)
+
 
 class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
            WorkingDirectory, Writable):
@@ -76,14 +87,14 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
     @property
     def type(self):
         try:
-            s = os.lstat(self.path)
+            mode = os.lstat(self.path).st_mode
         except os.error: # File doesn't exist
             return None
-        if stat.S_ISREG(s):
+        if stat.S_ISREG(mode):
             return FILE
-        if stat.S_ISDIR(s):
+        if stat.S_ISDIR(mode):
             return FOLDER
-        if stat.S_ISLNK(s):
+        if stat.S_ISLNK(mode):
             return LINK
         return "fileutils.OTHER"
 
@@ -284,6 +295,35 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
         with closing(zip_module.ZipFile(self._path, "r")) as zipfile:
             zipfile.extractall(folder.path)
 
+    @property
+    def delete_on_exit(self):
+        """
+        A boolean indicating whether or not this file (which may be a file or a
+        folder) should be deleted on interpreter shutdown. This is False by
+        default, but may be set to True to request that a particular file be
+        deleted on exit, and potentially set back to False to cancel such a
+        request.
+        
+        Note that such files are not absolutely guaranteed to be deleted on
+        exit. Deletion is handled via an :obj:`atexit` hook, so files will not be
+        deleted if, for example, the interpreter crashes or os._exit() is
+        called.
+        
+        The value of this property is shared among all File instances pointing
+        to a given path. For example::
+        
+            File("test").delete_on_exit = True # Instance 1
+            print File("test").delete_on_exit # Instance 2, prints "True"
+        """
+        return self in _delete_on_exit
+    
+    @delete_on_exit.setter
+    def delete_on_exit(self, value):
+        if value:
+            _delete_on_exit.add(self)
+        else:
+            _delete_on_exit.discard(self)
+
     def __str__(self):
         return "fileutils.File(%r)" % self._path
     
@@ -306,3 +346,17 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
         return True
 
 
+def create_temporary_folder(suffix="", prefix="tmp", parent=None,
+                            delete_on_exit=False):
+    """
+    Creates a folder (with tmpfile.mkdtemp) with the specified prefix, suffix,
+    and parent folder (or the current platform's default temporary directory if
+    no parent is specified) and returns a File object pointing to it.
+    
+    If delete_on_exit is True, the returned file's delete_on_exit property will
+    be set to True just before returning it.
+    """
+    parent = File(parent or tempfile.gettempdir())
+    folder = File(tempfile.mkdtemp(suffix, prefix, parent.path))
+    folder.delete_on_exit = delete_on_exit
+    return folder
