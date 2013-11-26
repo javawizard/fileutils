@@ -332,18 +332,16 @@ class Readable(object):
         if not self.is_file:
             raise Exception('"%s" does not exist or is not a file' % self._path)
     
-    def copy_to(self, other, overwrite=False, dereference_links=False):
+    def copy_to(self, other, overwrite=False, dereference_links=True):
         """
         Copies the contents of this file to the specified file object. An
         exception will be thrown if the specified file already exists and
         overwrite is False.
         
-        If dereference_links is True, symbolic links encountered during copying
-        will be dereferenced and their targets copied in their place. If
-        dereference_links is False, such links will be recreated purely as
-        symbolic links. It's almost always a wise idea to use
-        dereference_links=True when copying from instances of one subclass to
-        instances of a different subclass.
+        If dereference_links is True (the default), symbolic links encountered
+        during copying will be dereferenced and their targets copied in their
+        place. If dereference_links is False, such links will be recreated
+        purely as symbolic links.
         
         This also does not currently preserve file attributes or permissions;
         such abilities will be added soon.
@@ -359,9 +357,10 @@ class Readable(object):
             else:
                 raise Exception("The specified file already exists.")
         if dereference_links:
-            file_type = self.dereference(True).type
+            source = self.dereference(True)
         else:
-            file_type = self.type
+            source = self
+        file_type = source.type
         if file_type is FILE:
             with other.open_for_writing() as write_to:
                 for block in self.read_blocks():
@@ -372,8 +371,11 @@ class Readable(object):
                 child.copy_into(other)
         elif file_type is LINK:
             other.link_to(self.link_target)
+        elif file_type is None:
+            raise Exception("Can't copy {!r}, which doesn't exist, to {!r}"
+                            .format(source, other))
         else:
-            raise Exception("This file ({!r}) can't be copied.".format(self))
+            raise NotImplementedError(str(self))
 
     def copy_into(self, other, overwrite=False):
         """
