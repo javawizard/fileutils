@@ -1,13 +1,16 @@
 
 from fileutils2.interface import Hierarchy, Listable, Readable
-from fileutils2.interface import WorkingDirectory, Writable
+from fileutils2.interface import WorkingDirectory, Writable, ReadWrite
 from fileutils2.mixins import ChildrenMixin
 from fileutils2.constants import FILE, FOLDER, LINK
 import os.path
 import stat
+from contextlib import closing
+import zipfile as zip_module
+import glob as _glob
 
-class File(Hierarchy, ChildrenMixin, Listable, Readable, WorkingDirectory,
-           Writable):
+class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
+           WorkingDirectory, Writable):
     def __init__(self, *path_components):
         r"""
         Creates a new file from the specified path components. Each component
@@ -96,7 +99,7 @@ class File(Hierarchy, ChildrenMixin, Listable, Readable, WorkingDirectory,
         return os.readlink(self._path)
     
     def open_for_reading(self):
-        return open(self.path, "rb")
+        return self.open("rb")
 
     @property
     def size(self):
@@ -199,9 +202,87 @@ class File(Hierarchy, ChildrenMixin, Listable, Readable, WorkingDirectory,
     
     def open_for_writing(self, append=False):
         if append:
-            return open(self.path, "ab")
+            return self.open("ab")
         else:
-            return open(self.path, "wb")
+            return self.open("wb")
+    
+    def open(self, *args, **kwargs):
+        return open(self._path, *args, **kwargs)
+
+    def rename_to(self, other):
+        if isinstance(other, File):
+            os.rename(self._path, other.path)
+        else:
+            ReadWrite.rename_to(self, other)
+    
+    def glob(self, glob):
+        """
+        Expands the specified path relative to self and returns a list of all
+        matching files, as File objects. This is a thin wrapper around a call
+        to Python's glob.glob function.
+        """
+        return [File(f) for f in _glob.glob(os.path.join(self.path, glob))]
+    
+    def zip_into(self, filename, contents=True):
+        """
+        Creates a zip archive of this folder and writes it to the specified
+        filename, which can be either a pathname or a File object.
+        
+        If contents is True (the default), the files (and folders, and so on
+        recursively) contained within this folder will be written directly to
+        the zip file. If it's False, the folder will be written itself. The
+        difference is that, given a folder foo which looks like this::
+        
+            foo/
+                bar
+                baz/
+                    qux
+        
+        Specifying contents=False will result in a zip file whose contents look
+        something like::
+        
+            zipfile.zip/
+                foo/
+                    bar
+                    baz/
+                        qux
+        
+        Whereas specifying contents=True will result in this::
+        
+            zipfile.zip/
+                bar
+                baz/
+                    qux
+        
+        NOTE: This has only been tested on Linux. I still need to test it on
+        Windows to make sure pathnames are being handled correctly.
+        """
+        with closing(zip_module.ZipFile(File(filename).path, "w")) as zipfile:
+            for f in self.recurse():
+                if contents:
+                    path_in_zip = f.relative_path(self)
+                else:
+                    path_in_zip = f.relative_path(self.parent)
+                zipfile.write(f.path, path_in_zip)
+        
+    def unzip_into(self, folder):
+        """
+        Unzips the zip file referred to by self into the specified folder,
+        which will be automatically created (as if by File(folder).mkdirs())
+        if it does not yet exist.
+        
+        NOTE: This is an unsafe operation! The same warning present on Python's
+        zipfile.ZipFile.extractall applies here, namely that a maliciously
+        crafted zip file could cause absolute filesystem paths to be
+        overwritten. I hope to hand-roll my own extraction code in the future
+        that will explicitly filter out absolute paths.
+        
+        The return value of this function is File(folder).
+        """
+        folder = File(folder)
+        folder.mkdirs(silent=True)
+        with closing(zip_module.ZipFile(self._path, "r")) as zipfile:
+            zipfile.extractall(folder.path)
 
     def __str__(self):
         return "fileutils2.File(%r)" % self._path

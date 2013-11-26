@@ -1,5 +1,6 @@
 
 from fileutils2.interface import Listable, Readable, Hierarchy, Writable
+from fileutils2.interface import ReadWrite
 from fileutils2.mixins import ChildrenMixin
 from fileutils2.constants import FILE, FOLDER, LINK
 import posixpath
@@ -11,7 +12,30 @@ except ImportError:
     paramiko = None
 
 if paramiko:
-    class SSHFile(ChildrenMixin, Listable, Readable, Hierarchy, Writable):
+    class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
+                  Writable):
+        """
+        A concrete file implementation allowing file operations to be carried
+        out on a remote host via SSH and SFTP.
+        
+        Instances of SSHFile can be constructed around an instance of
+        paramiko.SFTPClient by doing::
+        
+            f = SSHFile(sftp_client)
+        
+        They can also be obtained from :obj:`~SSHFile.connect_with_password`.
+        
+        SSHFile instances are reentrant context managers that close their
+        underlying SFTPClient's transport on exit. This in combination with
+        connect_with_password allows the following pattern to be used to
+        properly clean things up after manipulating remote files::
+        
+            with SSHFile.connect_with_password(...) as f:
+                ...do stuff with f...
+                with f: # SSHFiles are reentrant, so this works fine
+                    ...do more stuff with f...
+                ...do even more stuff with f...
+        """
         _default_block_size = 2**19 # 512 KB
         
         def __init__(self, client, client_name=None, path="/"):
@@ -128,6 +152,12 @@ if paramiko:
         
         def open_for_writing(self, append=False):
             return self._client.open(self.path, "wb")
+        
+        def rename_to(self, other):
+            if isinstance(other, SSHFile) and self._client is other._client:
+                self._client.rename(self._path, other._path)
+            else:
+                return ReadWrite.rename_to(self, other)
 
         def __str__(self):
             if self._client_name:

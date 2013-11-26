@@ -411,8 +411,13 @@ class File(object):
         folder. This is just shorthand for self.copy_to(other.child(self.name))
         which, from experience, seems to be by far the most common use case for
         the copy_to function.
+        
+        The newly-created file in the specified folder will be returned as per
+        other.child(self.name).
         """
-        self.copy_to(other.child(self.name), overwrite)
+        new_file = other.child(self.name)
+        self.copy_to(new_file, overwrite)
+        return new_file
     
     def download_from(self, url, overwrite=False):
         """

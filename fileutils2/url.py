@@ -10,6 +10,9 @@ except ImportError:
 
 if requests:
     class URL(Readable, Hierarchy):
+        """
+        A concrete file implementation exposing a file-like interface to URLs.
+        """
         # NOTE: We don't yet handle query parameters and fragments properly;
         # some things (like self.parent) preserve them, while others (like
         # self.child) do away with them. Figure out what's the sane thing to
@@ -52,6 +55,9 @@ if requests:
         
         @property
         def size(self):
+            # TODO: We can save an extra request by just making the request
+            # against our original URL and handling 30* redirects manually
+            # (perhaps recursively call URL(response.headers["location"]).size)
             response = requests.head(self.dereference(recursive=True)._url.geturl())
             if response.status_code == 200:
                 try:
