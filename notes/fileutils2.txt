@@ -85,6 +85,12 @@ I think I'm going to start writing things and see how things go now.
 
 
 
+Well, that escalated quickly... I've got the entire thing done.
+
+All except for the reworked exception hierarchy, of course. But that can come later.
+
+
+
 
 
 
