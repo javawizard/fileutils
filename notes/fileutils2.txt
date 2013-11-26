@@ -91,6 +91,16 @@ All except for the reworked exception hierarchy, of course. But that can come la
 
 
 
+So I just noticed pathlib (which is being included with Python 3.4, yay!), which implements a lot of fileutils's path-level handling (so about 75% of the original fileutils and about 25% of fileutils2). I think I'm going to consider having fileutils be a layer on top of pathlib and use it to store the actual paths. That'd have a few advantages:
+
+    I don't have to import posixpath or ntpath, which aren't documented as part of the standard library, to manipulate paths for SSHFile and SMBFile; I can just use PurePosixPath and PureWindowsPath instead.
+    
+    When people actually start using Python 3.4, it'll be a lot easier to go between pathlib's paths and fileutils.
+
+fileutils (and particularly fileutils2) is still very relevant, though, as pathlib provides no support whatsoever for different implementations beside local access. (fileutils would, in a way, sort of become a set of additions to PosixPath and WindowsPath serving "under" PurePosixPath and PureWindowsPath.)
+
+
+
 
 
 
