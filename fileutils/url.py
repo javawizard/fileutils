@@ -1,4 +1,3 @@
-
 from fileutils.interface import Hierarchy, Readable
 from fileutils.constants import FILE, LINK
 import urlparse
@@ -140,3 +139,6 @@ if requests:
         def same_as(self, other):
             return (Hierarchy.same_as(self, other) and
                     self._url._replace(path="") == other._url._replace(path=""))
+
+else:
+    URL = None
