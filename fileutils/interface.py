@@ -332,15 +332,18 @@ class Readable(object):
         if not self.is_file:
             raise Exception('"%s" does not exist or is not a file' % self._path)
     
-    def copy_to(self, other, overwrite=False):
+    def copy_to(self, other, overwrite=False, dereference_links=False):
         """
-        Copies the contents of this file to the specified File object or
-        pathname. An exception will be thrown if the specified file already
-        exists and overwrite is False.
+        Copies the contents of this file to the specified file object. An
+        exception will be thrown if the specified file already exists and
+        overwrite is False.
         
-        This `does not currently work for folders
-        <https://github.com/javawizard/fileutils/issues/1>`_;
-        I hope to add this ability in the near future.
+        If dereference_links is True, symbolic links encountered during copying
+        will be dereferenced and their targets copied in their place. If
+        dereference_links is False, such links will be recreated purely as
+        symbolic links. It's almost always a wise idea to use
+        dereference_links=True when copying from instances of one subclass to
+        instances of a different subclass.
         
         This also does not currently preserve file attributes or permissions;
         such abilities will be added soon.
@@ -348,13 +351,29 @@ class Readable(object):
         # If self.is_folder is True, requires isinstance(self, Listable) and
         # isinstance(other, Hierarchy) when we implement support for folders.
         # Requires isinstance(other, Writable) always.
-        self.check_file()
+        
         # TODO: Use (and catch or pass on) proper exceptions here, EAFP style
-        if other.exists and not overwrite:
-            raise Exception("%r already exists" % other)
-        with other.open_for_writing() as write_to:
-            for block in self.read_blocks():
-                write_to.write(block)
+        if other.exists:
+            if overwrite:
+                other.delete()
+            else:
+                raise Exception("The specified file already exists.")
+        if dereference_links:
+            file_type = self.dereference(True).type
+        else:
+            file_type = self.type
+        if file_type is FILE:
+            with other.open_for_writing() as write_to:
+                for block in self.read_blocks():
+                    write_to.write(block)
+        elif file_type is FOLDER:
+            other.create_folder()
+            for child in self.children:
+                child.copy_into(other)
+        elif file_type is LINK:
+            other.link_to(self.link_target)
+        else:
+            raise Exception("This file ({!r}) can't be copied.".format(self))
 
     def copy_into(self, other, overwrite=False):
         """
