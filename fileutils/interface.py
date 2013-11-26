@@ -639,7 +639,7 @@ class Writable(object):
         is True, the file's contents will not be erased, and the returned
         stream will be positioned at the end of the file.
         
-        Note that some implementations (currently only SMBFile) don't have
+        Note that some implementations (e.g. SMBFile and FTPFile) don't have
         native support for writing files remotely; support in such
         implementations can be emulated by returning a wrapper around a
         temporary file that, when closed, uploads itself to the location of
