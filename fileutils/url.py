@@ -9,6 +9,12 @@ except ImportError:
     requests = None
 
 if requests:
+    REDIRECT_CODES = (requests.codes.moved_permanently,
+                      requests.codes.found,
+                      requests.codes.temporary_redirect,
+                      requests.codes.see_other)
+    SUCCESS_CODES = (requests.codes.ok,)
+    
     class URL(Readable, Hierarchy):
         """
         A concrete file implementation exposing a file-like interface to URLs.
@@ -32,12 +38,9 @@ if requests:
         @property
         def type(self):
             response = requests.head(self._url.geturl(), allow_redirects=False)
-            if response.status_code == requests.codes.ok:
+            if response.status_code in SUCCESS_CODES:
                 return FILE
-            elif response.status_code in (requests.codes.moved_permanently,
-                                          requests.codes.found,
-                                          requests.codes.temporary_redirect,
-                                          requests.codes.see_other):
+            elif response.status_code in REDIRECT_CODES:
                 return LINK
             else:
                 return None
@@ -45,10 +48,7 @@ if requests:
         @property
         def link_target(self):
             response = requests.head(self._url.geturl(), allow_redirects=False)
-            if response.status_code in (requests.codes.moved_permanently,
-                                        requests.codes.found,
-                                        requests.codes.temporary_redirect,
-                                        requests.codes.see_other):
+            if response.status_code in REDIRECT_CODES:
                 return response.headers["Location"]
             else:
                 return None
@@ -59,7 +59,7 @@ if requests:
             # against our original URL and handling 30* redirects manually
             # (perhaps recursively call URL(response.headers["location"]).size)
             response = requests.head(self.dereference(recursive=True)._url.geturl())
-            if response.status_code == 200:
+            if response.status_code in SUCCESS_CODES:
                 try:
                     return int(response.headers["content-length"])
                 except KeyError: # Fallback
@@ -81,8 +81,9 @@ if requests:
                 return target
             
         def open_for_reading(self):
-            response = requests.get(self._url.geturl(), stream=True)
-            response.raise_for_status()
+            response = requests.get(self._url.geturl(), stream=True, allow_redirects=True)
+            if response.status_code not in SUCCESS_CODES:
+                raise IOError("URL returned HTTP status code {0}".format(response.status_code))
             response.raw.decode_content=True
             # TODO: Add hooks here to check the content-length response header
             # and raise an exception if we hit EOF before reading that many
