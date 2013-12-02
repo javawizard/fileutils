@@ -1,4 +1,3 @@
-
 from fileutils.interface import Hierarchy, Listable, Readable
 from fileutils.interface import WorkingDirectory, Writable, ReadWrite
 from fileutils.mixins import ChildrenMixin
@@ -10,6 +9,8 @@ import zipfile as zip_module
 import glob as _glob
 import tempfile
 import atexit
+import urlparse
+import urllib
 
 # Set of File objects whose delete_on_exit property has been set to True. These
 # are deleted by the atexit hook registered two lines down.
@@ -77,6 +78,10 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
             return self._path.split(os.path.sep)
         else:
             return os.path.relpath(self._path, File(relative_to)._path).split(os.sep)
+    
+    @property
+    def url(self):
+        return urlparse.urljoin("file:", urllib.pathname2url(self._path))
 
     @property
     def child_names(self):
