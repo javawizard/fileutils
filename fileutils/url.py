@@ -1,6 +1,8 @@
 from fileutils.interface import Hierarchy, Readable
 from fileutils.constants import FILE, LINK
+from fileutils.local import File as _File
 import urlparse
+import os.path
 
 try:
     import requests
@@ -19,6 +21,18 @@ if requests:
         
         type = FILE
         link_target = None
+        
+        def __new__(cls, url):
+            parsed_url = urlparse.urlparse(url)
+            # If it's a file:// URL, return a fileutils.local.File wrapping
+            # the underlying path. The requests module doesn't like file:///
+            # URLs, and this fixes the problem quite nicely while also
+            # offering additional conveniences (like the ability to "write"
+            # to file:/// URLs)
+            if parsed_url.scheme == "file":
+                return _File(os.path.join(parsed_url.netloc, parsed_url.path))
+            else:
+                return object.__new__(cls, url)
         
         def __init__(self, url):
             self._url = urlparse.urlparse(url)
