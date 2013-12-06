@@ -1,6 +1,7 @@
 from fileutils.interface import Hierarchy, Readable
 from fileutils.constants import FILE, LINK
 from fileutils.local import File as _File
+import urllib2
 import urlparse
 import os.path
 
@@ -94,13 +95,11 @@ if requests:
                 return target
             
         def open_for_reading(self):
-            response = requests.get(self._url.geturl(), stream=True)
-            response.raise_for_status()
-            response.raw.decode_content=True
-            # TODO: Add hooks here to check the content-length response header
-            # and raise an exception if we hit EOF before reading that many
-            # bytes
-            return response.raw
+            # TODO: See how the returned object handles stream termination
+            # before the number of bytes specified by the content-length header
+            # have been read, and wrap it with a stream that performs such
+            # checks if it doesn't already
+            return urllib2.urlopen(self._url.geturl())
         
         def child(self, *names):
             if not names:
