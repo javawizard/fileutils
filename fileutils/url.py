@@ -99,7 +99,17 @@ if requests:
             # before the number of bytes specified by the content-length header
             # have been read, and wrap it with a stream that performs such
             # checks if it doesn't already
-            return urllib2.urlopen(self._url.geturl())
+            stream = urllib2.urlopen(self._url.geturl())
+            # urllib.addinfourl objects don't provide __enter__ and __exit__;
+            # patch the returned object to have them
+            if not hasattr(stream, "__enter__"):
+                def __enter__():
+                    return stream
+                def __exit__(*args):
+                    stream.close()
+                stream.__enter__ = __enter__
+                stream.__exit__ = __exit__
+            return stream
         
         def child(self, *names):
             if not names:
