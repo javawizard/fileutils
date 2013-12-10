@@ -47,9 +47,13 @@ if paramiko:
         @staticmethod
         def connect_with_password(host, username, password, port=22):
             transport = paramiko.Transport((host, port))
-            transport.connect(username=username, password=password)
-            sftp_client = transport.open_sftp_client()
-            return SSHFile(sftp_client, username + "@" + host)
+            try:
+                transport.connect(username=username, password=password)
+                sftp_client = transport.open_sftp_client()
+                return SSHFile(sftp_client, username + "@" + host)
+            except:
+                transport.close()
+                raise
         
         def _with_path(self, new_path):
             return SSHFile(self._client, self._client_name, new_path)
@@ -162,9 +166,7 @@ if paramiko:
         
         @property
         def size(self):
-            raise NotImplementedError("paramiko.SFTPClient doesn't have "
-                                      "built-in support for detecting file "
-                                      "sizes")
+            return self._client.stat(self._path).st_size
 
         def __str__(self):
             if self._client_name:
