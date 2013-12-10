@@ -1,7 +1,9 @@
-
 from fileutils.interface import Hierarchy, Readable
 from fileutils.constants import FILE, LINK
+from fileutils.local import File as _File
+import urllib2
 import urlparse
+import os.path
 
 try:
     import requests
@@ -26,6 +28,18 @@ if requests:
         
         type = FILE
         link_target = None
+        
+        def __new__(cls, url):
+            parsed_url = urlparse.urlparse(url)
+            # If it's a file:// URL, return a fileutils.local.File wrapping
+            # the underlying path. The requests module doesn't like file:///
+            # URLs, and this fixes the problem quite nicely while also
+            # offering additional conveniences (like the ability to "write"
+            # to file:/// URLs)
+            if parsed_url.scheme == "file":
+                return _File(os.path.join(parsed_url.netloc, parsed_url.path))
+            else:
+                return object.__new__(cls, url)
         
         def __init__(self, url):
             self._url = urlparse.urlparse(url)
@@ -81,14 +95,21 @@ if requests:
                 return target
             
         def open_for_reading(self):
-            response = requests.get(self._url.geturl(), stream=True, allow_redirects=True)
-            if response.status_code not in SUCCESS_CODES:
-                raise IOError("URL returned HTTP status code {0}".format(response.status_code))
-            response.raw.decode_content=True
-            # TODO: Add hooks here to check the content-length response header
-            # and raise an exception if we hit EOF before reading that many
-            # bytes
-            return response.raw
+            # TODO: See how the returned object handles stream termination
+            # before the number of bytes specified by the content-length header
+            # have been read, and wrap it with a stream that performs such
+            # checks if it doesn't already
+            stream = urllib2.urlopen(self._url.geturl())
+            # urllib.addinfourl objects don't provide __enter__ and __exit__;
+            # patch the returned object to have them
+            if not hasattr(stream, "__enter__"):
+                def __enter__():
+                    return stream
+                def __exit__(*args):
+                    stream.close()
+                stream.__enter__ = __enter__
+                stream.__exit__ = __exit__
+            return stream
         
         def child(self, *names):
             if not names:
@@ -141,3 +162,6 @@ if requests:
         def same_as(self, other):
             return (Hierarchy.same_as(self, other) and
                     self._url._replace(path="") == other._url._replace(path=""))
+
+else:
+    URL = None

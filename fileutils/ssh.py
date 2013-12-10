@@ -1,4 +1,3 @@
-
 from fileutils.interface import Listable, Readable, Hierarchy, Writable
 from fileutils.interface import ReadWrite
 from fileutils.mixins import ChildrenMixin
@@ -204,5 +203,8 @@ if paramiko:
         t.connect(username=username, password=getpass.getpass("Password: "))
         sftp = t.open_sftp_client()
         return sftp
+
+else:
+    SSHFile = None
 
 
