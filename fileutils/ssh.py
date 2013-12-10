@@ -5,6 +5,7 @@ from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 import posixpath
 import stat
+import pipes
 
 try:
     import paramiko
@@ -38,7 +39,8 @@ if paramiko:
         """
         _default_block_size = 2**19 # 512 KB
         
-        def __init__(self, client, client_name=None, path="/"):
+        def __init__(self, transport, client, client_name=None, path="/"):
+            self._transport = transport
             self._client = client
             self._client_name = client_name
             self._path = posixpath.normpath(path)
@@ -50,13 +52,26 @@ if paramiko:
             try:
                 transport.connect(username=username, password=password)
                 sftp_client = transport.open_sftp_client()
-                return SSHFile(sftp_client, username + "@" + host)
+                return SSHFile(transport, sftp_client, username + "@" + host)
             except:
                 transport.close()
                 raise
         
         def _with_path(self, new_path):
-            return SSHFile(self._client, self._client_name, new_path)
+            return SSHFile(self._transport, self._client, self._client_name,
+                           new_path)
+        
+        def _exec(self, command):
+            if isinstance(command, list):
+                command = " ".join(pipes.quote(arg) for arg in command)
+            # This is copied almost verbatim from
+            # paramiko.SSHClient.exec_command
+            channel = self._transport.open_session()
+            channel.exec_command(command)
+            stdin = channel.makefile('wb', -1)
+            stdout = channel.makefile('rb', -1)
+            stderr = channel.makefile_stderr('rb', -1)
+            return channel, stdin, stdout, stderr
         
         def __enter__(self):
             self._enter_count += 1
