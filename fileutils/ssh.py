@@ -57,7 +57,7 @@ if paramiko:
                 raise
         
         @staticmethod
-        def from_transport(transport, client_name=None):
+        def from_transport(transport):
             sftp_client = transport.open_sftp_client()
             return SSHFile(transport, sftp_client,
                            transport.get_username() + "@" +
