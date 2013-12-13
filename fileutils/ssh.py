@@ -93,7 +93,10 @@ if paramiko:
         
         def get_path_components(self, relative_to=None):
             if relative_to:
-                raise NotImplementedError
+                if not isinstance(relative_to, SSHFile):
+                    raise ValueError("relative_to must be another SSHFile "
+                                     "instance")
+                return posixpath.relpath(self._path, relative_to._path).split("/")
             return self._path.split("/")
         
         @property
