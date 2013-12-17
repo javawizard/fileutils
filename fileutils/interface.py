@@ -3,7 +3,6 @@ Abstract classes.
 """
 
 from abc import ABCMeta, abstractmethod, abstractproperty
-import os.path
 from fileutils.constants import FILE, FOLDER, LINK, YIELD, RECURSE
 import hashlib
 
@@ -167,7 +166,7 @@ class Hierarchy(object):
         Otherwise, os.path.sep will be used as the separator.
         """
         if separator is None:
-            separator = os.path.sep
+            separator = self._sep
         return separator.join(self.get_path_components(relative_to))
 
     @property

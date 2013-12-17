@@ -28,6 +28,7 @@ if requests:
         
         type = FILE
         link_target = None
+        _sep = "/"
         
         def __new__(cls, url):
             parsed_url = urlparse.urlparse(url)

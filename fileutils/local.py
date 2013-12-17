@@ -3,6 +3,8 @@ from fileutils.interface import WorkingDirectory, Writable, ReadWrite
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 import os.path
+import posixpath
+import ntpath
 import stat
 from contextlib import closing
 import zipfile as zip_module
@@ -23,6 +25,16 @@ def _():
 
 class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
            WorkingDirectory, Writable):
+    _sep = os.path.sep
+    
+    def __new__(cls, *args):
+        if os.path is posixpath:
+            return object.__new__(PosixFile)
+        elif os.path is ntpath:
+            return object.__new__(WindowsFile)
+        else:
+            raise Exception("Unsupported platform")
+    
     def __init__(self, *path_components):
         r"""
         Creates a new file from the specified path components. Each component
@@ -329,11 +341,6 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
         else:
             _delete_on_exit.discard(self)
 
-    def __str__(self):
-        return "fileutils.File(%r)" % self._path
-    
-    __repr__ = __str__
-    
     # Use __cmp__ instead of the rich comparison operators for brevity
     def __cmp__(self, other):
         if not isinstance(other, File):
@@ -349,6 +356,20 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
         existence, use self.exists instead.
         """
         return True
+
+
+class PosixFile(File):
+    def __str__(self):
+        return "fileutils.PosixFile(%r)" % self._path
+    
+    __repr__ = __str__
+
+
+class WindowsFile(File):
+    def __str__(self):
+        return "fileutils.WindowsFile(%r)" % self._path
+    
+    __repr__ = __str__
 
 
 def create_temporary_folder(suffix="", prefix="tmp", parent=None,

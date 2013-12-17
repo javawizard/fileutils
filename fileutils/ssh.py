@@ -37,6 +37,7 @@ if paramiko:
                 ...do even more stuff with f...
         """
         _default_block_size = 2**19 # 512 KB
+        _sep = "/"
         
         def __init__(self, transport, client, client_name=None, path="/"):
             self._transport = transport
