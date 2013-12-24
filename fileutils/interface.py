@@ -4,6 +4,8 @@ Abstract classes.
 
 from abc import ABCMeta, abstractmethod, abstractproperty
 from fileutils.constants import FILE, FOLDER, LINK, YIELD, RECURSE
+from fileutils.exceptions import generate
+from fileutils import exceptions
 import hashlib
 
 class Hierarchy(object):
@@ -321,7 +323,7 @@ class Readable(object):
         exception will be thrown.
         """
         if not self.is_folder:
-            raise Exception('"%s" does not exist or is not a directory' % self._path)
+            raise generate(exceptions.NotADirectoryError, self)
     
     def check_file(self):
         """
@@ -329,7 +331,7 @@ class Readable(object):
         exception will be thrown.
         """
         if not self.is_file:
-            raise Exception('"%s" does not exist or is not a file' % self._path)
+            raise generate(exceptions.FileNotFoundError, self)
     
     def copy_to(self, other, overwrite=False, dereference_links=True):
         """
@@ -354,7 +356,7 @@ class Readable(object):
             if overwrite:
                 other.delete()
             else:
-                raise Exception("The specified file already exists.")
+                raise generate(exceptions.FileExistsError, other)
         if dereference_links:
             source = self.dereference(True)
         else:
@@ -371,8 +373,11 @@ class Readable(object):
         elif file_type is LINK:
             other.link_to(self.link_target)
         elif file_type is None:
-            raise Exception("Can't copy {!r}, which doesn't exist, to {!r}"
-                            .format(source, other))
+            # TODO: This will happen when we're dereferencing links and we
+            # find one that doesn't exist. Should we just ignore such a
+            # situation and not copy anything, or should we copy the broken
+            # link itself?
+            raise generate(exceptions.FileNotFoundError, source)
         else:
             raise NotImplementedError(str(self))
 

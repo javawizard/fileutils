@@ -2,7 +2,8 @@ from fileutils.interface import Hierarchy, Listable, Readable
 from fileutils.interface import WorkingDirectory, Writable, ReadWrite
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
-from fileutils.exceptions import Convert
+from fileutils.exceptions import Convert, generate
+from fileutils import exceptions
 import os.path
 import posixpath
 import ntpath
@@ -128,6 +129,9 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
         return os.readlink(self._path)
     
     def open_for_reading(self):
+        # TODO: Consider wrapping with a stream that produces new-style
+        # exceptions as well... Also consider splitting such a thing out
+        # into its own library that can wrap sockets etc.
         return self.open("rb")
 
     @property
@@ -179,7 +183,7 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
                 return
             # If it's not, raise an exception. TODO: EAFP
             else:
-                raise Exception("The folder %r already exists." % self.path)
+                raise generate(exceptions.FileExistsError, self)
         else:
             # We're not a folder. (We don't need to see if we already exist as
             # e.g. a file as the call to os.mkdir will take care of raising an
@@ -207,7 +211,7 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
         """
         if not self.exists:
             if not ignore_missing:
-                raise Exception("This file does not exist.")
+                raise generate(exceptions.FileNotFoundError, self)
         elif self.is_folder and not self.is_link:
             for child in self.children:
                 child.delete()
@@ -236,11 +240,13 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
             return self.open("wb")
     
     def open(self, *args, **kwargs):
-        return open(self._path, *args, **kwargs)
+        with Convert():
+            return open(self._path, *args, **kwargs)
 
     def rename_to(self, other):
         if isinstance(other, File):
-            os.rename(self._path, other.path)
+            with Convert():
+                os.rename(self._path, other.path)
         else:
             ReadWrite.rename_to(self, other)
     
