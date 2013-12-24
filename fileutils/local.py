@@ -2,6 +2,7 @@ from fileutils.interface import Hierarchy, Listable, Readable
 from fileutils.interface import WorkingDirectory, Writable, ReadWrite
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
+from fileutils.exceptions import Convert
 import os.path
 import posixpath
 import ntpath
