@@ -90,7 +90,7 @@ if paramiko:
                 self.disconnect()
         
         def disconnect(self):
-            self._client.get_channel().get_transport().close()
+            self._transport.close()
         
         def get_path_components(self, relative_to=None):
             if relative_to:
