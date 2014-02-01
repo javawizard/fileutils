@@ -1,6 +1,7 @@
-from fileutils.interface import Hierarchy, Readable
+from fileutils.interface import Hierarchy, Readable, BaseFile
 from fileutils.constants import FILE, LINK
 from fileutils.local import File as _File
+from fileutils.ssh import SSHFile as _SSHFile
 import urllib2
 import urlparse
 import os.path
@@ -31,6 +32,12 @@ if requests:
         _sep = "/"
         
         def __new__(cls, url):
+            # Pass through if it's already a file. This allows converting
+            # things that might be a URL string or a file object to a file
+            # object with URL(string_or_file), similar to what File allows with
+            # other File objects.
+            if isinstance(url, BaseFile):
+                return url
             parsed_url = urlparse.urlparse(url)
             # If it's a file:// URL, return a fileutils.local.File wrapping
             # the underlying path. The requests module doesn't like file:///
@@ -39,6 +46,19 @@ if requests:
             # to file:/// URLs)
             if parsed_url.scheme == "file":
                 return _File(os.path.join(parsed_url.netloc, parsed_url.path))
+            # If it's an ssh:// URL, return a fileutils.ssh.SSHFile connected
+            # to the URL in question. SSHFiles learned the ability to close
+            # themselves when nothing else references them a few minutes ago,
+            # so there's no need for the user to know that the returned object
+            # is an SSHFile.
+            if parsed_url.scheme == "ssh":
+                user_part, _, host_part = parsed_url.netloc.rpartition("@")
+                username, _, password = user_part.partition(":")
+                host, _, port = host_part.partition(":")
+                return _SSHFile.connect(host=host,
+                                        username=username or None,
+                                        password=password or None,
+                                        port=int(port or 22)).child(parsed_url.path or "/")
             else:
                 return object.__new__(cls, url)
         
