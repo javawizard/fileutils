@@ -8,7 +8,11 @@ from fileutils.exceptions import generate
 from fileutils import exceptions
 import hashlib
 
-class Hierarchy(object):
+class BaseFile(object):
+    pass
+
+
+class Hierarchy(BaseFile):
     __metaclass__ = ABCMeta
     
     @abstractmethod
@@ -205,7 +209,7 @@ class Hierarchy(object):
         return self.path_components[-1]
 
 
-class Readable(object):
+class Readable(BaseFile):
     __metaclass__ = ABCMeta
     
     _default_block_size = 16384
@@ -520,7 +524,7 @@ class Listable(Readable):
                     yield f
 
 
-class WorkingDirectory(object):
+class WorkingDirectory(BaseFile):
     __metaclass__ = ABCMeta
     
     @abstractmethod
@@ -588,7 +592,7 @@ class _AsWorking(object):
         self.old.cd()
 
 
-class Writable(object):
+class Writable(BaseFile):
     __metaclass__ = ABCMeta
     
     @abstractmethod
