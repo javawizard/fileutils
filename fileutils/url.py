@@ -43,8 +43,10 @@ if requests:
             # the underlying path. The requests module doesn't like file:///
             # URLs, and this fixes the problem quite nicely while also
             # offering additional conveniences (like the ability to "write"
-            # to file:/// URLs)
-            if parsed_url.scheme == "file":
+            # to file:/// URLs).
+            # Also pretend it's a file if it doesn't have a scheme or the
+            # scheme's exactly one letter long (Windows paths look like this).
+            if parsed_url.scheme == "file" or len(parsed_url.scheme) == 1 or not parsed_url.scheme:
                 return _File(os.path.join(parsed_url.netloc, parsed_url.path))
             # If it's an ssh:// URL, return a fileutils.ssh.SSHFile connected
             # to the URL in question. SSHFiles learned the ability to close
