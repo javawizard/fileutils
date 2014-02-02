@@ -42,16 +42,11 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
     
     They can also be obtained from :obj:`~SSHFile.connect`.
     
-    SSHFile instances are reentrant context managers that close their
-    underlying SFTPClient's transport on exit. This in combination with
-    connect_with_password allows the following pattern to be used to
-    properly clean things up after manipulating remote files::
-    
-        with SSHFile.connect_with_password(...) as f:
-            ...do stuff with f...
-            with f: # SSHFiles are reentrant, so this works fine
-                ...do more stuff with f...
-            ...do even more stuff with f...
+    SSHFile instances wrap an SSHConnection object which closes its underlying
+    paramiko.Transport on garbage collection. There's therefore no need to
+    do anything special with an SSHFile when you're done with it, although you
+    can use it as a context manager to force it to close before it's garbage
+    collected.
     """
     _default_block_size = 2**19 # 512 KB
     _sep = "/"
@@ -67,6 +62,14 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
     
     @staticmethod
     def connect(host, username=None, password=None, port=22):
+        """
+        Connect to an SSH server and return an SSHFile pointing to the server's
+        root directory.
+        
+        If password is None, authentication with ~/.ssh/id_rsa will be
+        attempted. If username is None, the current user's username will be
+        used.
+        """
         if username is None:
             username = getpass.getuser()
         transport = paramiko.Transport((host, port))
