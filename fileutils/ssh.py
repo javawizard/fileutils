@@ -14,7 +14,7 @@ except ImportError:
     paramiko = None
 
 
-class SSHConnection(object):
+class _SSHConnection(object):
     def __init__(self, transport, client, client_name=None, autoclose=True):
         self.transport = transport
         self.client = client
