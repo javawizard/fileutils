@@ -42,11 +42,11 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
     
     They can also be obtained from :obj:`~SSHFile.connect`.
     
-    SSHFile instances wrap an SSHConnection object which closes its underlying
-    paramiko.Transport on garbage collection. There's therefore no need to
-    do anything special with an SSHFile when you're done with it, although you
-    can use it as a context manager to force it to close before it's garbage
-    collected.
+    SSHFile instances their underlying paramiko.Transport instances with an
+    object that automatically closes them on garbage collection. There's
+    therefore no need to do anything special with an SSHFile when you're done
+    with it, although you can use it as a context manager to force it to close
+    before it's garbage collected.
     """
     _default_block_size = 2**19 # 512 KB
     _sep = "/"
@@ -83,7 +83,7 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
                 key = paramiko.RSAKey.from_private_key_file(os.path.expanduser("~/.ssh/id_rsa"))
                 transport.auth_publickey(username, key)
             sftp_client = transport.open_sftp_client()
-            return SSHFile(SSHConnection(transport, sftp_client, username + "@" + host))
+            return SSHFile(_SSHConnection(transport, sftp_client, username + "@" + host))
         except:
             transport.close()
             raise
@@ -91,7 +91,7 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
     @staticmethod
     def from_transport(transport, autoclose=True):
         sftp_client = transport.open_sftp_client()
-        return SSHFile(SSHConnection(transport, sftp_client,
+        return SSHFile(_SSHConnection(transport, sftp_client,
                        transport.get_username() + "@" +
                        transport.getpeername()[0], autoclose=autoclose))
     
@@ -179,8 +179,8 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
             return None
     
     def create_folder(self, ignore_existing=False, recursive=False):
-        if recursive:
-            self.parent.create_folder(ignore_existing=True, recursive=True)
+        if recursive and not self.parent.exists:
+            self.parent.create_folder(recursive=True)
         try:
             self._client.mkdir(self._path)
         except IOError:
