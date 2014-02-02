@@ -62,7 +62,7 @@ if requests:
                                         password=password or None,
                                         port=int(port or 22)).child(parsed_url.path or "/")
             else:
-                return object.__new__(cls, url)
+                return object.__new__(cls)
         
         def __init__(self, url):
             self._url = urlparse.urlparse(url)
