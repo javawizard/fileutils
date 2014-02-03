@@ -42,8 +42,8 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
     
     They can also be obtained from :obj:`~SSHFile.connect`.
     
-    SSHFile instances their underlying paramiko.Transport instances with an
-    object that automatically closes them on garbage collection. There's
+    SSHFile instances wrap their underlying paramiko.Transport instances with
+    an object that automatically closes them on garbage collection. There's
     therefore no need to do anything special with an SSHFile when you're done
     with it, although you can use it as a context manager to force it to close
     before it's garbage collected.
@@ -120,6 +120,15 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
             self.disconnect()
     
     def disconnect(self):
+        """
+        Disconnect this SSHFile's underlying connection.
+        
+        You usually won't need to call this explicitly; connections are
+        automatically closed when all SSHFiles referring to them are garbage
+        collected. You can use this method to force the connection to
+        disconnect before all such references are garbage collected, if you
+        want.
+        """
         self._connection.close()
     
     def get_path_components(self, relative_to=None):
