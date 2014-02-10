@@ -220,7 +220,7 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
         elif isinstance(other, basestring):
             self._client.symlink(other, self.path)
         else:
-            raise ValueError("Can't make a symlink from {!r} to {!r}".format(self, other))
+            raise ValueError("Can't make a symlink from {0!r} to {1!r}".format(self, other))
     
     def open_for_writing(self, append=False):
         f = self._client.open(self.path, "wb")
@@ -239,9 +239,9 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
 
     def __str__(self):
         if self._connection.client_name:
-            return "<fileutils.SSHFile {!r} on {!s}>".format(self._path, self._connection.client_name)
+            return "<fileutils.SSHFile {0!r} on {1!s}>".format(self._path, self._connection.client_name)
         else:
-            return "<fileutils.SSHFile {!r} on {!s}>".format(self._path, self._client)
+            return "<fileutils.SSHFile {0!r} on {1!s}>".format(self._path, self._client)
     
     __repr__ = __str__
 
