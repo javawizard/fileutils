@@ -9,13 +9,8 @@ from fileutils import exceptions
 import hashlib
 
 class BaseFile(object):
-    pass
-
-
-class Hierarchy(BaseFile):
-    __metaclass__ = ABCMeta
+    _default_block_size = 16384
     
-    @abstractmethod
     def child(self, *names):
         """
         Returns a file object representing the child of this file with the
@@ -30,16 +25,17 @@ class Hierarchy(BaseFile):
         This method is analogous to
         :obj:`os.path.join(self.path, *names) <os.path.join>`.
         """
+        raise NotImplementedError
     
-    @abstractproperty
+    @property
     def parent(self):
         """
         Returns a file representing the parent of this file. If this file has
         no parent (for example, if it's "/" on Unix-based operating systems or
         a drive letter on Windows), None will be returned.
         """
+        raise NotImplementedError
     
-    @abstractmethod
     def get_path_components(self, relative_to=None):
         """
         Returns a list of the components in this file's path, including (on
@@ -50,6 +46,7 @@ class Hierarchy(BaseFile):
         specified one. Otherwise, the returned components will represent an
         absolute path.
         """
+        raise NotImplementedError
     
     def same_as(self, other):
         """
@@ -207,23 +204,17 @@ class Hierarchy(BaseFile):
         string.
         """
         return self.path_components[-1]
-
-
-class Readable(BaseFile):
-    __metaclass__ = ABCMeta
     
-    _default_block_size = 16384
-    
-    @abstractproperty
+    @property
     def type(self):
         """
         The type of this file. This can be one of FILE, FOLDER, or LINK (I
         don't yet have constants for block/character special devices; those
         will come soon.) If the file does not exist, this should be None.
         """
-        pass
+        raise NotImplementedError
     
-    @abstractproperty
+    @property
     def link_target(self):
         """
         Returns the target to which this file, which is expected to be a
@@ -234,16 +225,17 @@ class Readable(BaseFile):
         links are free to interpret this as they wish; URL, for example,
         presents as a link any URL which sends back an HTTP redirect.
         """
+        raise NotImplementedError
     
-    @abstractmethod
     def open_for_reading(self):
         """
         Open this file for reading in binary mode and return a Python file-like
         object from which this file's contents can be read.
         """
         # Should open in "rb" mode
+        raise NotImplementedError
 
-    @abstractproperty
+    @property
     def size(self):
         """
         The size, in bytes, of this file. This is the number of bytes that the
@@ -256,6 +248,7 @@ class Readable(BaseFile):
         
         This is the same as len(self).
         """
+        raise NotImplementedError
     
     @property
     def exists(self):
@@ -470,24 +463,22 @@ class Readable(BaseFile):
         with self.open_for_reading() as f:
             return f.read()
 
-
-class Listable(Readable):
-    __metaclass__ = ABCMeta
-    
-    @abstractproperty
+    @property
     def children(self):
         """
         A list of all of the children of this file, as a list of File objects.
         If this file is not a folder, the value of this property is None.
         """
+        raise NotImplementedError
     
-    @abstractproperty
+    @property
     def child_names(self):
         """
         A list of the names of all of the children of this file, as a list of
         strings. If this file is not a folder, the value of this property is
         None.
         """
+        raise NotImplementedError
 
     def recurse(self, filter=None, include_self=True, recurse_skipped=True):
         """
@@ -523,11 +514,6 @@ class Listable(Readable):
                 for f in child.recurse(filter, True, recurse_skipped):
                     yield f
 
-
-class WorkingDirectory(BaseFile):
-    __metaclass__ = ABCMeta
-    
-    @abstractmethod
     def change_to(self):
         """
         Sets the current working directory to self.
@@ -538,6 +524,7 @@ class WorkingDirectory(BaseFile):
         If you need to restore the working directory at any point, you might
         want to consider using :obj:`self.as_working <as_working>` instead.
         """
+        raise NotImplementedError
     
     def cd(self):
         """
@@ -573,29 +560,6 @@ class WorkingDirectory(BaseFile):
         """
         return _AsWorking(self)
 
-
-class _AsWorking(object):
-    """
-    The class of the context managers returned from
-    WorkingDirectory.as_working. See that method's docstring for more
-    information on what this class does.
-    """
-    def __init__(self, folder):
-        self.folder = folder
-    
-    def __enter__(self):
-        self.old = type(self.folder)()
-        self.folder.cd()
-        return self.folder
-    
-    def __exit__(self, *args):
-        self.old.cd()
-
-
-class Writable(BaseFile):
-    __metaclass__ = ABCMeta
-    
-    @abstractmethod
     def create_folder(self, ignore_existing=False, recursive=False):
         """
         Creates the folder referred to by this File object. If it already
@@ -608,8 +572,8 @@ class Writable(BaseFile):
         False, an exception will be thrown. If recursive is True, the folder's
         parent, its parent's parent, and so on will be created automatically.
         """
+        raise NotImplementedError
     
-    @abstractmethod
     def delete(self, ignore_missing=False):
         """
         Deletes this file or folder, recursively deleting children if
@@ -625,8 +589,8 @@ class Writable(BaseFile):
         Note that symbolic links are never recursed into, and are instead
         themselves removed.
         """
+        raise NotImplementedError
     
-    @abstractmethod
     def link_to(self, target):
         """
         Creates this file as a symbolic link pointing to other, which can be
@@ -637,8 +601,8 @@ class Writable(BaseFile):
         the same type as self, however, is used, the symbolic link will always
         be absolute.
         """
+        raise NotImplementedError
     
-    @abstractmethod
     def open_for_writing(self, append=False):
         """
         Open this file for reading in binary mode and return a Python file-like
@@ -657,6 +621,7 @@ class Writable(BaseFile):
         open_for_writing should be closed before calling open_for_reading on
         the same file.
         """
+        raise NotImplementedError
 
     def append(self, data):
         """
@@ -690,10 +655,6 @@ class Writable(BaseFile):
         """
         with open(self.path, "wb") as f:
             f.write(data)
-
-
-class ReadWrite(Readable, Writable):
-    __metaclass__ = ABCMeta
     
     def rename_to(self, other):
         """
@@ -714,6 +675,24 @@ class ReadWrite(Readable, Writable):
         """
         self.copy_to(other)
         self.delete()
+
+
+class _AsWorking(object):
+    """
+    The class of the context managers returned from
+    WorkingDirectory.as_working. See that method's docstring for more
+    information on what this class does.
+    """
+    def __init__(self, folder):
+        self.folder = folder
+    
+    def __enter__(self):
+        self.old = type(self.folder)()
+        self.folder.cd()
+        return self.folder
+    
+    def __exit__(self, *args):
+        self.old.cd()
 
 
 

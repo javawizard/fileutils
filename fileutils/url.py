@@ -1,4 +1,4 @@
-from fileutils.interface import Hierarchy, Readable, BaseFile
+from fileutils.interface import BaseFile
 from fileutils.constants import FILE, LINK
 from fileutils.local import File as _File
 from fileutils.ssh import SSHFile as _SSHFile
@@ -18,7 +18,7 @@ if requests:
                       requests.codes.see_other)
     SUCCESS_CODES = (requests.codes.ok,)
     
-    class URL(Readable, Hierarchy):
+    class URL(BaseFile):
         """
         A concrete file implementation exposing a file-like interface to URLs.
         """
@@ -183,7 +183,7 @@ if requests:
             return True
         
         def same_as(self, other):
-            return (Hierarchy.same_as(self, other) and
+            return (BaseFile.same_as(self, other) and
                     self._url._replace(path="") == other._url._replace(path=""))
 
 else:

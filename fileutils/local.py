@@ -1,5 +1,4 @@
-from fileutils.interface import Hierarchy, Listable, Readable
-from fileutils.interface import WorkingDirectory, Writable, ReadWrite
+from fileutils import BaseFile
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 from fileutils.exceptions import Convert, generate
@@ -25,8 +24,7 @@ def _():
         f.delete(ignore_missing=True)
 
 
-class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
-           WorkingDirectory, Writable):
+class File(ChildrenMixin, BaseFile):
     _sep = os.path.sep
     
     def __new__(cls, *args):
@@ -248,7 +246,7 @@ class File(ReadWrite, Hierarchy, ChildrenMixin, Listable, Readable,
             with Convert():
                 os.rename(self._path, other.path)
         else:
-            ReadWrite.rename_to(self, other)
+            BaseFile.rename_to(self, other)
     
     def glob(self, glob):
         """

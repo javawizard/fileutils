@@ -6,5 +6,5 @@ setup(
     description="An object-oriented file access library",
     author="Alexander Boyd",
     author_email="alex@opengroove.org",
-    py_modules=["fileutils"]
+    packages=["fileutils"]
 )

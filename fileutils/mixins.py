@@ -1,7 +1,7 @@
 
-from fileutils.interface import Listable, Readable
+from fileutils.interface import BaseFile
 
-class ChildrenMixin(Listable, Readable):
+class ChildrenMixin(BaseFile):
     @property
     def children(self):
         """

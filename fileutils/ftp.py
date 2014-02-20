@@ -1,11 +1,9 @@
 
-from fileutils.interface import Listable, Readable, Writable, Hierarchy
-from fileutils.interface import ReadWrite
+from fileutils.interface import BaseFile
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 
-class FTPFile(ChildrenMixin, Listable, Readable, Writable, Hierarchy,
-              ReadWrite):
+class FTPFile(ChildrenMixin, BaseFile):
     pass
 
 

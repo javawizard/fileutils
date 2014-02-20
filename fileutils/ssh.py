@@ -1,5 +1,4 @@
-from fileutils.interface import Listable, Readable, Hierarchy, Writable
-from fileutils.interface import ReadWrite
+from fileutils.interface import BaseFile
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 import os.path # for expanduser, used to find ~/.ssh/id_rsa
@@ -29,8 +28,7 @@ class _SSHConnection(object):
             self.close()
 
 
-class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
-              Writable):
+class SSHFile(ChildrenMixin, BaseFile):
     """
     A concrete file implementation allowing file operations to be carried
     out on a remote host via SSH and SFTP.
@@ -231,7 +229,7 @@ class SSHFile(ReadWrite, ChildrenMixin, Listable, Readable, Hierarchy,
         if isinstance(other, SSHFile) and self._connection is other._connection:
             self._client.rename(self._path, other._path)
         else:
-            return ReadWrite.rename_to(self, other)
+            return BaseFile.rename_to(self, other)
     
     @property
     def size(self):
