@@ -25,6 +25,19 @@ def _():
 
 
 class File(ChildrenMixin, BaseFile):
+    """
+    An object representing a file or folder on the local filesystem. File
+    objects are intended to be as opaque as possible; one should rarely, if
+    ever, need to know about the pathname of a File object, or that a File even
+    has a pathname associated with it.
+    
+    The file or folder referred to by a File object need not exist. One can
+    test whether a File object represents a file that does exist using the
+    exists property.
+    
+    File objects cannot be changed to refer to a different file after they are
+    created.
+    """
     _sep = os.path.sep
     
     def __new__(cls, *args):

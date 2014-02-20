@@ -19,6 +19,7 @@ class _SSHConnection(object):
         self.client = client
         self.client_name = client_name
         self._autoclose = autoclose
+        self._enter_count = 0
     
     def close(self):
         self.transport.close()
@@ -52,7 +53,6 @@ class SSHFile(ChildrenMixin, BaseFile):
     def __init__(self, connection, path="/"):
         self._connection = connection
         self._path = posixpath.normpath(path)
-        self._enter_count = 0
     
     @property
     def _client(self):
@@ -109,12 +109,12 @@ class SSHFile(ChildrenMixin, BaseFile):
         return channel, stdin, stdout, stderr
     
     def __enter__(self):
-        self._enter_count += 1
+        self._connection._enter_count += 1
         return self
     
     def __exit__(self, *args):
-        self._enter_count -= 1
-        if self._enter_count == 0:
+        self._connection._enter_count -= 1
+        if self._connection._enter_count == 0:
             self.disconnect()
     
     def disconnect(self):

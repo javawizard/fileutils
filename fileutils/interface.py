@@ -9,6 +9,12 @@ from fileutils import exceptions
 import hashlib
 
 class BaseFile(object):
+    """
+    The base class from which all fileutils objects inherit.
+    
+    Instances of this class don't do anything useful on their own. You'll want
+    to instantiate one of this class's subclasses instead.
+    """
     _default_block_size = 16384
     
     def child(self, *names):

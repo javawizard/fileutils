@@ -21,6 +21,14 @@ if requests:
     class URL(BaseFile):
         """
         A concrete file implementation exposing a file-like interface to URLs.
+        
+        This class supports several different URL schemes:
+        
+         * ssh: URLs of the form ssh://[user[:pass]@]host[:port]/[path] are
+           converted to instances of SSHFile using SSHFile.connect().
+         * file: URLs of the form file:/// are converted to instances of File,
+           so they can be read, written, and listed as per usual.
+         * All other schemes supported by urllib2 are supported by URL.
         """
         # NOTE: We don't yet handle query parameters and fragments properly;
         # some things (like self.parent) preserve them, while others (like
@@ -53,7 +61,7 @@ if requests:
             # themselves when nothing else references them a few minutes ago,
             # so there's no need for the user to know that the returned object
             # is an SSHFile.
-            if parsed_url.scheme == "ssh":
+            if parsed_url.scheme in ("ssh", "sftp"):
                 user_part, _, host_part = parsed_url.netloc.rpartition("@")
                 username, _, password = user_part.partition(":")
                 host, _, port = host_part.partition(":")
