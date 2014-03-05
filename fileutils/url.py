@@ -46,7 +46,11 @@ if requests:
             # other File objects.
             if isinstance(url, BaseFile):
                 return url
-            parsed_url = urlparse.urlparse(url)
+            scheme, netloc, path, _, _, _ = urlparse.urlparse(url)
+            # Python 2.6.1 and earlier have a bug in urlparse that results
+            # in an empty netloc for unknown schemes. Work around this.
+            if path.startswith("//") and not netloc:
+                netloc, _, path = path[2:].partition("/")
             # If it's a file:// URL, return a fileutils.local.File wrapping
             # the underlying path. The requests module doesn't like file:///
             # URLs, and this fixes the problem quite nicely while also
