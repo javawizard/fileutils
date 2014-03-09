@@ -1,0 +1,56 @@
+Working on fileutils 3...
+
+Fileutils 3 will be backward compatible with fileutils 2.
+
+(and it will take lots of ideas from Java's java.nio.file, but it won't be intricately bound to URIs like java.nio.file is.)
+
+So, I'm planning on there being two additional base classes: FileSystem and MountPoint.
+
+(Oh, side note: I'm also contemplating renaming File to LocalFile and then leaving an alias called File to LocalFile for backward compatibility.)
+
+FileSystem would have a function that could be called to get a list of all of the roots of the filesystem, as a list of BaseFile instances. Each one would correspond to a distinct directory hierarchy, and the idea is that none of these roots has a parent, i.e. f.parent == None for all f returned from this function.
+
+(Posix systems, for example, would have a single root, namely "/". Windows systems would have one root per drive letter.)
+
+BaseFile would then gain a well defined notion of a file's path: a file's path identifies it uniquely within the context of its containing FileSystem. Then FileSystem would have a function for getting a BaseFile object given its path.
+
+BaseFile instances would also gain a function/property for getting the FileSystem from which they were obtained.
+
+So then mountpoints...
+
+MountPoint instances would have an associated File indicating the root of their hierarchy. They'd also have a File instance indicating the device (on platforms which support this) that's mounted.
+
+Then FileSystem would have a function for getting a list of mountpoints present on that filesystem. Posix operating systems would return one mountpoint for each mount, and Windows would return one for each drive letter.
+
+A BaseFile could also be asked the mountpoint on which it exists. This would more or less just see if the current path corresponds exactly to a mountpoint, and if it doesn't, then its parent would be checked, and so on and so forth.
+
+So then... we could have a ReconnectFileSystem that wraps a constructor that can be used to construct a FileSystem, and it'll return wrapper BaseFile and MountPoint instances, and probably wrapper streams from open_for_reading/open_for_writing. These would reconstruct the underlying filesystem whenever any of the wrapped operations raise something like DisconnectedError or something.
+
+So, attribute names...
+
+We can't use root on BaseFile as pathlib already uses that for something else (and I'm eventually wanting to make BaseFile's API a superset of that of pathlib.Path).
+
+We can use mountpoint, at least, for the mountpoint. I don't believe that's used by pathlib.
+
+Maybe we just don't expose the root as its own attribute for now. People can always get it by looping over self.parent until self.parent is None.
+
+(By definition, a BaseFile's parent will be None if and only if it's one of its filesystem's roots.)
+
+So then we can use BaseFile.mountpoint to refer to the mountpoint on which the file is located.
+
+And then MountPoint can have an attribute, location, that's the BaseFile at which the mountpoint is mounted.
+
+And both BaseFile and MountPoint can have an attribute, filesystem, that's the FileSystem from which they were created.
+
+So then we'd have LocalFileSystem, and there'd be a singleton instance of it. And I'm thinking I'll override LocalFileSystem.__new__ such that it just returns the singleton LocalFileSystem instance.
+
+
+
+
+
+
+
+
+
+
+
