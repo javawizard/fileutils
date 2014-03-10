@@ -8,6 +8,29 @@ from fileutils.exceptions import generate
 from fileutils import exceptions
 import hashlib
 
+class FileSystem(object):
+    def child(self, path):
+        raise NotImplementedError
+    
+    @property
+    def roots(self):
+        raise NotImplementedError
+    
+    @property
+    def mountpoints(self):
+        pass
+
+
+class MountPoint(object):
+    @property
+    def filesystem(self):
+        raise NotImplementedError
+    
+    @property
+    def location(self):
+        raise NotImplementedError
+
+
 class BaseFile(object):
     """
     The base class from which all fileutils objects inherit.
@@ -40,6 +63,10 @@ class BaseFile(object):
         no parent (for example, if it's "/" on Unix-based operating systems or
         a drive letter on Windows), None will be returned.
         """
+        raise NotImplementedError
+    
+    @property
+    def mountpoint(self):
         raise NotImplementedError
     
     def get_path_components(self, relative_to=None):

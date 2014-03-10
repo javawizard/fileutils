@@ -1,4 +1,4 @@
-from fileutils import BaseFile
+from fileutils.interface import BaseFile, FileSystem, MountPoint
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 from fileutils.exceptions import Convert, generate
@@ -22,6 +22,69 @@ _delete_on_exit = set()
 def _():
     for f in _delete_on_exit:
         f.delete(ignore_missing=True)
+
+
+_local_file_system = None
+
+class LocalFileSystem(FileSystem):
+    def __new__(cls):
+        if _local_file_system:
+            # This will double-call self.__init__, which isn't a problem since
+            # we don't actually override it.
+            return _local_file_system
+        if os.path is posixpath:
+            return object.__new__(PosixLocalFileSystem)
+        elif os.path is ntpath:
+            return object.__new__(WindowsLocalFileSystem)
+        else:
+            raise Exception("Unsupported platform")
+
+
+class PosixLocalFileSystem(LocalFileSystem):
+    @property
+    def roots(self):
+        return File("/")
+    
+    @property
+    def mountpoints(self):
+        proc_mounts = File("/proc/self/mountinfo")
+        if proc_mounts.exists:
+            mountpoints = []
+            with proc_mounts.open("r") as f:
+                for line in f:
+                    spec = line.split(" ")
+                    location = File(spec[4])
+                    mountpoints.append(PosixLocalMountPoint(location))
+            return mountpoints
+        raise Exception("Unsupported platform")
+
+
+class WindowsLocalFileSystem(LocalFileSystem):
+    pass
+
+
+class LocalMountPoint(MountPoint):
+    pass
+
+class PosixLocalMountPoint(LocalMountPoint):
+    def __init__(self, location):
+        self._location = location
+    
+    @property
+    def location(self):
+        return self._location
+    
+    def __str__(self):
+        return "<PosixLocalMountPoint {0!r}>".format(self._location.path)
+    
+    __repr__ = __str__
+
+
+class WindowsMountPoint(LocalMountPoint):
+    pass
+
+
+_local_file_system = LocalFileSystem()
 
 
 class File(ChildrenMixin, BaseFile):
@@ -97,6 +160,20 @@ class File(ChildrenMixin, BaseFile):
         if f == self:
             return None
         return f
+    
+    @property
+    def filesystem(self):
+        return LocalFileSystem()
+    
+    @property
+    def mountpoint(self):
+        mountpoint_dict = dict((m.location, m)
+                               for m in self.filesystem.mountpoints)
+        for f in self.get_ancestors(including_self=True):
+            try:
+                return mountpoint_dict[f]
+            except KeyError:
+                pass
 
     def get_path_components(self, relative_to=None):
         if relative_to is None:
