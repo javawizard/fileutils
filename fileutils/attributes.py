@@ -57,6 +57,13 @@ class PosixPermissions(AttributeSet):
     @sticky.setter
     def sticky(self, value):
         self.set(stat.S_ISVTX, value)
+    
+    # Note to self: add execute here that returns... probably True if any user
+    # can execute, and setting it sets execute for... probably all users who
+    # can read. That way, the executable bit but nothing else can be copied
+    # from one file's permissions to anohter with a.execute = b.execute.
+    # (And so note that setting execute to false would clear all three execute
+    # bits.)
 
 
 
