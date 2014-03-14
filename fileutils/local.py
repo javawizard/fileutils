@@ -111,6 +111,16 @@ class PosixLocalMountPoint(LocalMountPoint):
             )
         )
     
+    def unmount(self, force=False):
+        """
+        Unmount this mountpoint.
+        
+        If force is True, -f will be passed to the umount call. This will
+        (among other things) force nonresponsive NFS mounts to unmount, as well
+        as forcing mounts not listed in /etc/mtab to unmount.
+        """
+        raise NotImplementedError
+    
     def __str__(self):
         return "<PosixLocalMountPoint {0!r}>".format(self._location.path)
     
