@@ -7,6 +7,52 @@ from fileutils.constants import FILE, FOLDER, LINK, YIELD, RECURSE
 from fileutils.exceptions import generate
 from fileutils import exceptions
 import hashlib
+import collections
+
+class DiskUsage(object):
+    def __init__(self, space, inodes):
+        self._space = space
+        self._inodes = inodes
+    
+    @property
+    def space(self):
+        return self._space
+    
+    @property
+    def inodes(self):
+        return self._inodes
+    
+    def __repr__(self):
+        return "DiskUsage(space={0!r}, inodes={1!r})".format(self.space, self.inodes)
+    
+    __str__ = __repr__
+
+
+class Usage(object):
+    def __init__(self, total, used, available):
+        self._total = total
+        self._used = used
+        self._available = available
+    
+    @property
+    def total(self):
+        return self._total
+    
+    @property
+    def used(self):
+        return self._used
+    
+    @property
+    def available(self):
+        return self._available
+    
+    @property
+    def free(self):
+        return self.total - self.used
+    
+    def __repr__(self):
+        return "Usage(total={0!r}, used={1!r}, available={2!r})".format(self.total, self.used, self.available)
+
 
 class FileSystem(object):
     def child(self, path):
@@ -29,6 +75,26 @@ class MountPoint(object):
     @property
     def location(self):
         raise NotImplementedError
+    
+    @property
+    def usage(self):
+        raise NotImplementedError
+    
+    @property
+    def total_space(self):
+        return self.usage.space.total
+    
+    @property
+    def used_space(self):
+        return self.usage.space.used
+    
+    @property
+    def available_space(self):
+        return self.usage.space.available
+    
+    @property
+    def free_space(self):
+        return self.usage.space.free
 
 
 class BaseFile(object):

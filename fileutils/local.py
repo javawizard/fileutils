@@ -1,4 +1,4 @@
-from fileutils.interface import BaseFile, FileSystem, MountPoint
+from fileutils.interface import BaseFile, FileSystem, MountPoint, DiskUsage, Usage
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 from fileutils.exceptions import Convert, generate
@@ -14,6 +14,11 @@ import tempfile
 import atexit
 import urlparse
 import urllib
+import string
+
+# I'm avoiding dependencies on pywin32 as long as possible... We'll see how
+# long I can turn out.
+import ctypes
 
 # Set of File objects whose delete_on_exit property has been set to True. These
 # are deleted by the atexit hook registered two lines down.
@@ -60,11 +65,26 @@ class PosixLocalFileSystem(LocalFileSystem):
 
 
 class WindowsLocalFileSystem(LocalFileSystem):
-    pass
+    @property
+    def roots(self):
+        drives = []
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives() #@UndefinedVariable
+        for letter in string.uppercase:
+            if bitmask & 1:
+                drives.append(File(letter + ":\\"))
+            bitmask >>= 1
+        return drives
+    
+    @property
+    def mountpoints(self):
+        return [WindowsMountPoint(r) for r in self.roots]
 
 
 class LocalMountPoint(MountPoint):
-    pass
+    @property
+    def filesystem(self):
+        return LocalFileSystem()
+
 
 class PosixLocalMountPoint(LocalMountPoint):
     def __init__(self, location):
@@ -73,6 +93,23 @@ class PosixLocalMountPoint(LocalMountPoint):
     @property
     def location(self):
         return self._location
+    
+    @property
+    def usage(self):
+        info = os.statvfs(self.location.path)
+        block_size = info.f_frsize
+        return DiskUsage(
+            space=Usage(
+                total=info.f_blocks * block_size,
+                used=(info.f_blocks - info.f_bfree) * block_size,
+                available=info.f_bavail * block_size
+            ),
+            inodes=Usage(
+                total=info.f_files,
+                used=info.f_files - info.f_ffree,
+                available=info.f_favail
+            )
+        )
     
     def __str__(self):
         return "<PosixLocalMountPoint {0!r}>".format(self._location.path)
