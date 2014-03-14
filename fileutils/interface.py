@@ -429,7 +429,8 @@ class BaseFile(object):
         if not self.is_file:
             raise generate(exceptions.FileNotFoundError, self)
     
-    def copy_to(self, other, overwrite=False, dereference_links=True):
+    def copy_to(self, other, overwrite=False, dereference_links=True,
+                attribute_sets=None):
         """
         Copies the contents of this file to the specified file object. An
         exception will be thrown if the specified file already exists and
@@ -476,6 +477,7 @@ class BaseFile(object):
             raise generate(exceptions.FileNotFoundError, source)
         else:
             raise NotImplementedError(str(self))
+        source.copy_attributes_to(other, attribute_sets=attribute_sets)
 
     def copy_into(self, other, overwrite=False):
         """
@@ -774,6 +776,28 @@ class BaseFile(object):
         """
         self.copy_to(other)
         self.delete()
+    
+    @property
+    def attributes(self):
+        """
+        This is the new attributes system. It's highly experimental, so beware
+        that it might not work as expected and that its API could change
+        without notice. More to come.
+        """
+        return {}
+    
+    def copy_attributes_to(self, other, attribute_sets=None):
+        """
+        Copy all attributes shared in common between self and the specified
+        file from self to other.
+        
+        TBD.
+        """
+        if attribute_sets is None:
+            attribute_sets = self.attributes.keys()
+        for attribute_set in attribute_sets:
+            if attribute_set in self.attributes and attribute_set in other.attributes:
+                self.attributes[attribute_set].copy_to(other.attributes[attribute_set])
 
 
 class _AsWorking(object):

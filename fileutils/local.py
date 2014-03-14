@@ -2,6 +2,7 @@ from fileutils.interface import BaseFile, FileSystem, MountPoint, DiskUsage, Usa
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 from fileutils.exceptions import Convert, generate
+from fileutils.attributes import ExtendedAttributes
 from fileutils import exceptions
 import os.path
 import posixpath
@@ -15,10 +16,16 @@ import atexit
 import urlparse
 import urllib
 import string
+import errno
 
 # I'm avoiding dependencies on pywin32 as long as possible... We'll see how
 # long I can turn out.
 import ctypes
+
+try:
+    import xattr
+except ImportError:
+    xattr = None
 
 # Set of File objects whose delete_on_exit property has been set to True. These
 # are deleted by the atexit hook registered two lines down.
@@ -134,6 +141,52 @@ class WindowsMountPoint(LocalMountPoint):
 _local_file_system = LocalFileSystem()
 
 
+class PosixLocalExtendedAttributes(ExtendedAttributes):
+    # Python 3.3 added native extended attribute support in the form of
+    # os.listxattr and family. When fileutils gains Python 3 compatibility, we
+    # should use os.listxattr and family if they exist.
+    def __init__(self, path):
+        self._path = path
+    
+    def get(self, name):
+        try:
+            return xattr.getxattr(self._path, name)
+        except IOError as e:
+            # TODO: See if this is different on other platforms, such as OS X
+            if (e.errno == errno.ENODATA or e.errno == errno.EOPNOTSUPP
+                    or e.errno == errno.ENOENT):
+                raise KeyError(name)
+            else:
+                raise
+    
+    def set(self, name, value):
+        # This can bail with EOPNOTSUPP if the user specifies attribute names
+        # we don't like. Should we warn the user about this?
+        xattr.setxattr(self._path, name, value)
+    
+    def list(self):
+        try:
+            return list(xattr.listxattr(self._path))
+        except IOError as e:
+            if e.errno == errno.EOPNOTSUPP or e.errno == errno.ENOENT: # No
+                # xattr support or the file doesn't exist
+                return []
+            else:
+                raise
+    
+    def delete(self, name):
+        try:
+            xattr.removexattr(self._path, name)
+        except IOError as e:
+            if (e.errno == errno.ENODATA or e.errno == errno.EOPNOTSUPP
+                    or e.errno == errno.ENOENT):
+                raise KeyError(name)
+            else:
+                raise
+    
+    def __repr__(self):
+        return "PosixLocalExtendedAttributes({0!r})".format(self._path)
+
 class File(ChildrenMixin, BaseFile):
     """
     An object representing a file or folder on the local filesystem. File
@@ -149,6 +202,7 @@ class File(ChildrenMixin, BaseFile):
     created.
     """
     _sep = os.path.sep
+    attributes = None
     
     def __new__(cls, *args):
         if os.path is posixpath:
@@ -191,6 +245,8 @@ class File(ChildrenMixin, BaseFile):
         # Make the pathname absolute
         path = os.path.abspath(path)
         self._path = path
+        
+        self.attributes = {}
     
     def child(self, *names):
         return File(os.path.join(self.path, *names))
@@ -501,6 +557,12 @@ class File(ChildrenMixin, BaseFile):
 
 
 class PosixFile(File):
+    def __init__(self, *args, **kwargs):
+        File.__init__(self, *args, **kwargs)
+        
+        if xattr:
+            self.attributes[ExtendedAttributes] = PosixLocalExtendedAttributes(self.path)
+        
     def __str__(self):
         return "fileutils.PosixFile(%r)" % self._path
     
