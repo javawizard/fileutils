@@ -46,7 +46,11 @@ if requests:
             # other File objects.
             if isinstance(url, BaseFile):
                 return url
-            parsed_url = urlparse.urlparse(url)
+            scheme, netloc, path, _, _, _ = urlparse.urlparse(url)
+            # Python 2.6.1 and earlier have a bug in urlparse that results
+            # in an empty netloc for unknown schemes. Work around this.
+            if path.startswith("//") and not netloc:
+                netloc, _, path = path[2:].partition("/")
             # If it's a file:// URL, return a fileutils.local.File wrapping
             # the underlying path. The requests module doesn't like file:///
             # URLs, and this fixes the problem quite nicely while also
@@ -54,21 +58,21 @@ if requests:
             # to file:/// URLs).
             # Also pretend it's a file if it doesn't have a scheme or the
             # scheme's exactly one letter long (Windows paths look like this).
-            if parsed_url.scheme == "file" or len(parsed_url.scheme) == 1 or not parsed_url.scheme:
-                return _File(os.path.join(parsed_url.netloc, parsed_url.path))
+            if scheme == "file" or len(scheme) == 1 or not scheme:
+                return _File(os.path.join(netloc, path))
             # If it's an ssh:// URL, return a fileutils.ssh.SSHFile connected
             # to the URL in question. SSHFiles learned the ability to close
             # themselves when nothing else references them a few minutes ago,
             # so there's no need for the user to know that the returned object
             # is an SSHFile.
-            if parsed_url.scheme in ("ssh", "sftp"):
-                user_part, _, host_part = parsed_url.netloc.rpartition("@")
+            if scheme in ("ssh", "sftp"):
+                user_part, _, host_part = netloc.rpartition("@")
                 username, _, password = user_part.partition(":")
                 host, _, port = host_part.partition(":")
                 return _SSHFile.connect(host=host,
                                         username=username or None,
                                         password=password or None,
-                                        port=int(port or 22)).child(parsed_url.path or "/")
+                                        port=int(port or 22)).child(path or "/")
             else:
                 return object.__new__(cls)
         
