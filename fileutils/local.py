@@ -2,7 +2,7 @@ from fileutils.interface import BaseFile, FileSystem, MountPoint, DiskUsage, Usa
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 from fileutils.exceptions import Convert, generate
-from fileutils.attributes import ExtendedAttributes
+from fileutils.attributes import ExtendedAttributes, PosixPermissions
 from fileutils import exceptions
 import os.path
 import posixpath
@@ -186,6 +186,20 @@ class PosixLocalExtendedAttributes(ExtendedAttributes):
     
     def __repr__(self):
         return "PosixLocalExtendedAttributes({0!r})".format(self._path)
+
+
+class PosixLocalPermissions(PosixPermissions):
+    def __init__(self, path):
+        self._path = path
+    
+    @property
+    def mode(self):
+        return os.stat(self._path).st_mode
+    
+    @mode.setter
+    def mode(self, value):
+        os.chmod(self._path, value)
+
 
 class File(ChildrenMixin, BaseFile):
     """
@@ -560,6 +574,7 @@ class PosixFile(File):
     def __init__(self, *args, **kwargs):
         File.__init__(self, *args, **kwargs)
         
+        self.attributes[PosixPermissions] = PosixLocalPermissions(self.path)
         if xattr:
             self.attributes[ExtendedAttributes] = PosixLocalExtendedAttributes(self.path)
         
