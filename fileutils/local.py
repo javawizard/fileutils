@@ -1,5 +1,5 @@
 from fileutils.interface import BaseFile, FileSystem, MountPoint, DiskUsage, Usage
-from fileutils.mixins import ChildrenMixin
+from fileutils.mixins import ChildrenMixin, DefaultMountDevice
 from fileutils.constants import FILE, FOLDER, LINK
 from fileutils.exceptions import Convert, generate
 from fileutils.attributes import ExtendedAttributes, PosixPermissions
@@ -17,6 +17,7 @@ import urlparse
 import urllib
 import string
 import errno
+import subprocess
 
 # I'm avoiding dependencies on pywin32 as long as possible... We'll see how
 # long I can turn out.
@@ -41,8 +42,8 @@ _local_file_system = None
 class LocalFileSystem(FileSystem):
     def __new__(cls):
         if _local_file_system:
-            # This will double-call self.__init__, which isn't a problem since
-            # we don't actually override it.
+            # This will double-call _local_file_system.__init__, which isn't a
+            # problem since we don't actually override it.
             return _local_file_system
         if os.path is posixpath:
             return object.__new__(PosixLocalFileSystem)
@@ -50,6 +51,9 @@ class LocalFileSystem(FileSystem):
             return object.__new__(WindowsLocalFileSystem)
         else:
             raise Exception("Unsupported platform")
+    
+    def child(self, *path_components):
+        return File(*path_components)
 
 
 class PosixLocalFileSystem(LocalFileSystem):
@@ -61,13 +65,14 @@ class PosixLocalFileSystem(LocalFileSystem):
     def mountpoints(self):
         proc_mounts = File("/proc/self/mountinfo")
         if proc_mounts.exists:
-            mountpoints = []
+            mountpoints = {}
             with proc_mounts.open("r") as f:
                 for line in f:
                     spec = line.split(" ")
                     location = File(spec[4])
-                    mountpoints.append(PosixLocalMountPoint(location))
-            return mountpoints
+                    if location not in mountpoints:
+                        mountpoints[location] = (PosixLocalMountPoint(location))
+            return list(mountpoints.values())
         raise Exception("Unsupported platform")
 
 
@@ -102,6 +107,25 @@ class PosixLocalMountPoint(LocalMountPoint):
         return self._location
     
     @property
+    def devices(self):
+        proc_mounts = File("/proc/self/mountinfo")
+        if proc_mounts.exists:
+            devices = []
+            with proc_mounts.open("r") as f:
+                for line in f:
+                    spec = line.split(" ")
+                    # 8 = device, 3 = subpath
+                    if spec[4] == self.location.path:
+                        device = spec[8]
+                        subpath = spec[3]
+                        location = None
+                        if device.startswith('/'):
+                            location = File(device)
+                        devices.append(DefaultMountDevice(location, device, subpath))
+            return devices
+        raise Exception("Unsupported platform")        
+    
+    @property
     def usage(self):
         info = os.statvfs(self.location.path)
         block_size = info.f_frsize
@@ -126,7 +150,10 @@ class PosixLocalMountPoint(LocalMountPoint):
         (among other things) force nonresponsive NFS mounts to unmount, as well
         as forcing mounts not listed in /etc/mtab to unmount.
         """
-        raise NotImplementedError
+        command = ['umount', self.location.path]
+        if force:
+            command.append('-f')
+        subprocess.check_call(command)
     
     def __str__(self):
         return "<PosixLocalMountPoint {0!r}>".format(self._location.path)
@@ -284,6 +311,9 @@ class File(ChildrenMixin, BaseFile):
     
     @property
     def mountpoint(self):
+        # Build up a mountpoint dictionary. Note that on platforms like Linux
+        # (I haven't checked to see if any other POSIX platforms support this)
+        # that support multiple mountpoints on a single location in a stack,
         mountpoint_dict = dict((m.location, m)
                                for m in self.filesystem.mountpoints)
         for f in self.get_ancestors(including_self=True):

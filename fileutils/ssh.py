@@ -1,4 +1,4 @@
-from fileutils.interface import BaseFile
+from fileutils.interface import BaseFile, FileSystem, MountPoint
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
 import os.path # for expanduser, used to find ~/.ssh/id_rsa
@@ -13,7 +13,7 @@ except ImportError:
     paramiko = None
 
 
-class _SSHConnection(object):
+class SSHFileSystem(FileSystem):
     def __init__(self, transport, client, client_name=None, autoclose=True):
         self.transport = transport
         self.client = client
@@ -21,12 +21,54 @@ class _SSHConnection(object):
         self._autoclose = autoclose
         self._enter_count = 0
     
+    @staticmethod
+    def connect(host, username=None, password=None, port=22):
+        """
+        Connect to an SSH server and return an SSHFileSystem connected to the
+        server.
+        
+        If password is None, authentication with ~/.ssh/id_rsa will be
+        attempted. If username is None, the current user's username will be
+        used.
+        """
+        if username is None:
+            username = getpass.getuser()
+        transport = paramiko.Transport((host, port))
+        try:
+            transport.start_client()
+            if password:
+                transport.auth_password(username, password)
+            else:
+                # This will raise an exception if the user doesn't have a
+                # ~/.ssh/id_rsa, which we just pass on
+                key = paramiko.RSAKey.from_private_key_file(os.path.expanduser("~/.ssh/id_rsa"))
+                transport.auth_publickey(username, key)
+            sftp_client = transport.open_sftp_client()
+            return SSHFileSystem(transport, sftp_client, username + "@" + host)
+        except:
+            transport.close()
+            raise
+    
+    @staticmethod
+    def from_transport(transport, autoclose=True):
+        sftp_client = transport.open_sftp_client()
+        return SSHFileSystem(transport, sftp_client,
+                             transport.get_username() + "@" +
+                             transport.getpeername()[0], autoclose=autoclose)
+    
     def close(self):
         self.transport.close()
     
     def __del__(self):
         if self._autoclose:
             self.close()
+    
+    def child(self, *path_components):
+        return SSHFile(self, posixpath.join("/", path_components))
+    
+    @property
+    def roots(self):
+        return [SSHFile(self, "/")]
 
 
 class SSHFile(ChildrenMixin, BaseFile):
@@ -53,6 +95,8 @@ class SSHFile(ChildrenMixin, BaseFile):
     def __init__(self, connection, path="/"):
         self._connection = connection
         self._path = posixpath.normpath(path)
+        while self._path.startswith("//"):
+            self._path = self._path[1:]
     
     @property
     def _client(self):

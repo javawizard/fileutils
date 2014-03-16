@@ -1,5 +1,5 @@
 
-from fileutils.interface import BaseFile
+from fileutils.interface import BaseFile, MountDevice
 
 class ChildrenMixin(BaseFile):
     @property
@@ -14,3 +14,28 @@ class ChildrenMixin(BaseFile):
         return [self.child(p) for p in child_names]
 
 
+class DefaultMountDevice(MountDevice):
+    def __init__(self, location, device, subpath):
+        self._location = location
+        self._device = device
+        self._subpath = subpath
+    
+    @property
+    def location(self):
+        return self._location
+    
+    @property
+    def device(self):
+        return self._device
+    
+    @property
+    def subpath(self):
+        return self._subpath
+    
+    def __str__(self):
+        if self.subpath != '/':
+            return "<DefaultMountDevice {0!r}, subpath {1!r}>".format(self.device, self.subpath)
+        else:
+            return "<DefaultMountDevice {0!r}>".format(self.device)
+    
+    __repr__ = __str__

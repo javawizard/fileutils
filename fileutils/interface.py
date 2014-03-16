@@ -77,7 +77,24 @@ class MountPoint(object):
         raise NotImplementedError
     
     @property
+    def devices(self):
+        # List of MountDevice instances corresponding to the stack of this
+        # mountpoint. Last item is the currently visible device.
+        raise NotImplementedError
+    
+    @property
+    def device(self):
+        devices = self.devices
+        if devices:
+            return self.devices[-1]
+        else:
+            return None
+    
+    @property
     def usage(self):
+        raise NotImplementedError
+    
+    def unmount(self, force=True):
         raise NotImplementedError
     
     @property
@@ -95,6 +112,20 @@ class MountPoint(object):
     @property
     def free_space(self):
         return self.usage.space.free
+
+
+class MountDevice(object):
+    @property
+    def location(self):
+        raise NotImplementedError
+    
+    @property
+    def device(self):
+        raise NotImplementedError
+    
+    @property
+    def subpath(self):
+        raise NotImplementedError
 
 
 class BaseFile(object):
@@ -412,6 +443,10 @@ class BaseFile(object):
         True even for broken symbolic links.
         """
         return self.type is LINK
+    
+    @property
+    def is_mountpoint(self):
+        return self.mountpoint.location == self
     
     def check_folder(self):
         """
@@ -786,18 +821,84 @@ class BaseFile(object):
         """
         return {}
     
-    def copy_attributes_to(self, other, attribute_sets=None):
+    def copy_attributes_to(self, other, which_attributes={}):
         """
-        Copy all attributes shared in common between self and the specified
-        file from self to other.
+        Copy file/directory attributes from self to other.
         
-        TBD.
+        which_attributes is a dictionary indicating which attribute sets are
+        to be copied. The keys are subclasses of AttributeSet (these are class
+        objects themselves, not instances of said classes) and the values
+        indicate whether, and how, attribute sets are to be copied:
+        
+            True indicates that the attribute set in question should be copied.
+            The copying will be performed with the attribute set's copy_to
+            method.
+            
+            False indicates that the attribute set in question should not be
+            copied.
+            
+            A two-argument function can be used to copy attributes in a custom
+            manner. The function will be called with the source attribute set
+            as the first argument and the target attribute set as the second
+            argument.
+        
+        One additional key, None, can be specified. Its value indicates
+        whether, and how, all attribute sets not explicitly specified in the
+        dictionary are to be copied. If not specified, each attribute set's
+        copy_by_default property is used to decide whether or not to copy that
+        attribute set.
+        
+        To copy POSIX permissions and mode bits only, and nothing else, one
+        could use::
+        
+            foo.copy_attributes_to(bar, {PosixPermissions: True, None: False})
+        
+        To skip copying of POSIX permissions and mode bits but copy everything
+        else, one could use::
+        
+            foo.copy_attributes_to(bar, {PosixPermissions: False})
+        
+        To copy only the extended attribute "user.foo", one could use::
+        
+            def copy_user_foo(source, target):
+                target.set("user.foo", source.get("user.foo"))
+            foo.copy_attributes_to(bar, {ExtendedAttributes: copy_user_foo,
+                                         None: False})
+        
+        (This example would be easier written as::
+        
+            bar.attributes[ExtendedAttributes].set("user.foo,
+                foo.attributes[ExtendedAttributes].get("user.foo"))
+        
+        so take it as purely an example.)
         """
-        if attribute_sets is None:
-            attribute_sets = self.attributes.keys()
-        for attribute_set in attribute_sets:
-            if attribute_set in self.attributes and attribute_set in other.attributes:
-                self.attributes[attribute_set].copy_to(other.attributes[attribute_set])
+        default_spec = which_attributes.get(None)
+        for attribute_set in self.attributes.keys():
+            if attribute_set in other.attributes:
+                ours = self.attributes[attribute_set]
+                theirs = other.attributes[attribute_set]
+                # Try an attribute set specific spec first
+                try:
+                    spec = which_attributes[attribute_set]
+                except KeyError:
+                    # Wasn't specified for this particular attribute set, so
+                    # use the default if one was specified
+                    if default_spec is not None:
+                        spec = default_spec
+                    else:
+                        # Default wasn't specified, so use the attribute set's
+                        # default copying policy. TODO: Consider changing this
+                        # to only copy if both ours.copy_by_default and
+                        # theirs.copy_by_default are True; this would allow
+                        # certain targets to specifically request that they not
+                        # be copied to by default.
+                        spec = ours.copy_by_default
+                if spec is True:
+                    ours.copy_to(theirs)
+                elif spec is False:
+                    pass
+                else:
+                    spec(ours, theirs)
 
 
 class _AsWorking(object):
