@@ -1,5 +1,8 @@
 """
 Abstract classes.
+
+This module contains all of the abstract classes that define the public API for
+fileutils.
 """
 
 from abc import ABCMeta, abstractmethod, abstractproperty
@@ -9,11 +12,15 @@ from fileutils import exceptions
 import hashlib
 import collections
 
+__all__ = ["FileSystem", "MountPoint", "MountDevice", "DiskUsage", "Usage",
+           "BaseFile"]
+
 class DiskUsage(object):
     """
     Disk space and inode usage.
     
-    Instances of this class are typically obtained from MountPoint.usage.
+    Instances of this class are typically obtained from
+    :obj:`MountPoint.usage`.
     """
     def __init__(self, space, inodes):
         self._space = space
@@ -22,15 +29,15 @@ class DiskUsage(object):
     @property
     def space(self):
         """
-        An instance of Usage indicating utilization of disk space.
+        An instance of :obj:`Usage` indicating utilization of disk space.
         """
         return self._space
     
     @property
     def inodes(self):
         """
-        An instance of Usage indicating utilization of inodes, or None on
-        platforms (like Windows) that don't have such a concept.
+        An instance of :obj:`Usage` indicating utilization of inodes, or None
+        on platforms (like Windows) that don't have such a concept.
         """
         return self._inodes
     
@@ -70,9 +77,9 @@ class Usage(object):
         Amount of free disk space or number of inodes available to the current
         user.
         
-        This is often the same as self.free, but things like disk space quotas
-        and blocks reserved for the superuser can make it have a value less
-        than that of self.free.
+        This is often the same as :obj:`self.free <free>`, but things like disk
+        space quotas and blocks reserved for the superuser can make it have a
+        value less than that of self.free.
         """
         return self._available
     
@@ -92,14 +99,16 @@ class FileSystem(object):
     An abstract class representing an entire file system hierarchy.
     
     Instances of this class are typically obtained by directly instantiating
-    its subclasses. The most commonly used subclass, LocalFileSystem, maintains
+    its subclasses. The most commonly used subclass,
+    :obj:`LocalFileSystem <fileutils.local.LocalFileSystem>`, maintains
     a singleton instance that corresponds to the filesystem of the local
-    machine. Other subclasses include SSHFileSystem.
+    machine. Other subclasses include
+    :obj:`SSHFileSystem <fileutils.ssh.SSHFileSystem>`.
     """
     def child(self, path):
         """
-        Return an instance of BaseFile representing the file located at the
-        specific path. 
+        Return an instance of :obj:`BaseFile` representing the file located at
+        the specific path. 
         """
         raise NotImplementedError
     
@@ -107,7 +116,7 @@ class FileSystem(object):
     def roots(self):
         """
         A list of all of the file system hierarchy roots exposes by this
-        FileSystem instance.
+        FileSystem instance, as :obj:`BaseFile` instances.
         
         On Windows, there will be one root per drive letter. On POSIX systems,
         there will be exactly one root, namely '/'.
@@ -115,10 +124,20 @@ class FileSystem(object):
         raise NotImplementedError
     
     @property
+    def root(self):
+        """
+        A sensible "default" root for this file system, or None if there isn't
+        really any sensible default.
+        
+        The default implementation just returns self.roots[0]. 
+        """
+        return self.roots[0]
+    
+    @property
     def mountpoints(self):
         """
-        A list of MountPoint instances corresponding to all mount points on the
-        system.
+        A list of :obj:`MountPoint` instances corresponding to all mount points
+        on the system.
         
         On Windows, there will be exactly one mount point for each drive
         letter. On POSIX systems, there will be one mount point per, well,
@@ -131,33 +150,33 @@ class MountPoint(object):
     """
     An abstract class representing mount points on a file system.
     
-    Instances of this class can be obtained from BaseFile.mountpoint, a
+    Instances of this class can be obtained from :obj:`~BaseFile.mountpoint`, a
     property that returns the MountPoint instance on which the file in question
-    resides. They can also be obtained from FileSystem.mountpoints, a property
-    that returns a list of all of the system's mount points.
+    resides. They can also be obtained from :obj:`~FileSystem.mountpoints`, a
+    property that returns a list of all of the system's mount points.
     """
     @property
     def filesystem(self):
         """
-        The FileSystem instance on which this mount point resides.
+        The :obj:`FileSystem` instance on which this mount point resides.
         """
         raise NotImplementedError
     
     @property
     def location(self):
         """
-        The BaseFile instance indicating the directory at which this mount
-        point is mounted.
+        The :obj:`BaseFile` instance indicating the directory at which this
+        mount point is mounted.
         """
         raise NotImplementedError
     
     @property
     def devices(self):
         """
-        A list of instances of MountDevice representing all of the devices
-        currently mounted at this mount point, in the order in which they were
-        attached. The last of these is the device whose data is currently
-        available at this mount point.
+        A list of instances of :obj:`MountDevice` representing all of the
+        devices currently mounted at this mount point, in the order in which
+        they were attached. The last of these is the device whose data is
+        currently available at this mount point.
         
         Not all systems support stacks of devices mounted at the same
         mount point. For systems that don't support this, there will never be
@@ -171,12 +190,12 @@ class MountPoint(object):
     @property
     def device(self):
         """
-        An instance of MountDevice representing the topmost device currently
-        mounted at this mount point. This is the device whose data is currently
-        available at this mount point.
+        An instance of :obj:`MountDevice` representing the topmost device
+        currently mounted at this mount point. This is the device whose data is
+        currently available at this mount point.
         
-        This is just short for self.devices[-1], but if self.devices is empty,
-        None will be returned instead.
+        This is just short for :obj:`self.devices <devices>`[-1], but if
+        self.devices is empty, None will be returned instead.
         """
         devices = self.devices
         if devices:
@@ -187,31 +206,43 @@ class MountPoint(object):
     @property
     def usage(self):
         """
-        An instance of DiskUsage indicating the current disk and inode usage
-        for this mount point.
+        An instance of :obj:`DiskUsage` indicating the current disk and inode
+        usage for this mount point.
         """
         raise NotImplementedError
     
     def unmount(self, force=True):
         """
-        Unmount the topmost device attached to this mountpoint.
+        Unmount the topmost device attached to this mount point.
         """
         raise NotImplementedError
     
     @property
     def total_space(self):
+        r"""
+        Shorthand for self.\ :obj:`usage <usage>`.\ :obj:`space <DiskUsage.space>`.\ :obj:`total <Usage.total>`.
+        """
         return self.usage.space.total
     
     @property
     def used_space(self):
+        r"""
+        Shorthand for self.\ :obj:`usage <usage>`.\ :obj:`space <DiskUsage.space>`.\ :obj:`used <Usage.used>`.
+        """
         return self.usage.space.used
     
     @property
     def available_space(self):
+        r"""
+        Shorthand for self.\ :obj:`usage <usage>`.\ :obj:`space <DiskUsage.space>`.\ :obj:`available <Usage.available>`.
+        """
         return self.usage.space.available
     
     @property
     def free_space(self):
+        r"""
+        Shorthand for self.\ :obj:`usage <usage>`.\ :obj:`space <DiskUsage.space>`.\ :obj:`free <Usage.free>`.
+        """
         return self.usage.space.free
 
 
@@ -229,7 +260,7 @@ class MountDevice(object):
     @property
     def location(self):
         """
-        The location of this device as a BaseFile instance, if the subclass
+        The location of this device as a :obj:`BaseFile` instance, if the subclass
         exposes mount point devices in the form of a file in the file system
         hierarchy. On Linux, for example, this might be something like
         File('/dev/sda1'). On Windows this will be None, and it will also be
@@ -244,7 +275,8 @@ class MountDevice(object):
         A textual representation of this device, if the subclass exposes such
         information.
         
-        If self.location is not None, this will be self.location.path.
+        If :obj:`self.location <location>` is not None, this will be
+        self.location.path.
         
         On Linux, for special file system types, this will be the name of the
         type in question; 'tmpfs', for example.
@@ -273,8 +305,9 @@ class BaseFile(object):
     An abstract class representing an absolute path to a file on a particular
     FileSystem instance.
     
-    Instances of this class can be obtained from FileSystem.child(). They can
-    also be obtained from FileSystem.roots, a property providing a list of all
+    Instances of this class can be obtained from
+    :obj:`FileSystem.child()` <FileSystem.child>`. They can also be obtained
+    from :obj:`FileSystem.roots`, a property providing a list of all
     of the file system's root directories.
     """
     _default_block_size = 16384
@@ -590,7 +623,7 @@ class BaseFile(object):
         return self.type is LINK
     
     @property
-    def is_mountpoint(self):
+    def is_mount(self):
         """
         True if this File is a mount point, False if it isn't.
         

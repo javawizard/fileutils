@@ -311,9 +311,7 @@ class File(ChildrenMixin, BaseFile):
     
     @property
     def mountpoint(self):
-        # Build up a mountpoint dictionary. Note that on platforms like Linux
-        # (I haven't checked to see if any other POSIX platforms support this)
-        # that support multiple mountpoints on a single location in a stack,
+        # Build up a mountpoint dictionary
         mountpoint_dict = dict((m.location, m)
                                for m in self.filesystem.mountpoints)
         for f in self.get_ancestors(including_self=True):
@@ -430,20 +428,9 @@ class File(ChildrenMixin, BaseFile):
             os.mkdir(self.path)
 
     def delete(self, contents=False, ignore_missing=False):
-        """
-        Deletes this file or folder, recursively deleting children if
-        necessary.
-        
-        The contents parameter has no effect, and is present for backward
-        compatibility.
-        
-        If the file does not exist and ignore_missing is False, an exception
-        will be thrown. If the file does not exist but ignore_missing is True,
-        this function simply does nothing.
-        
-        Note that symbolic links are never recursed into, and are instead
-        themselves removed.
-        """
+        # If it's a mount point, unmount it before trying to delete it
+        while self.is_mount:
+            self.mountpoint.unmount(force=True)
         if not self.exists:
             if not ignore_missing:
                 raise generate(exceptions.FileNotFoundError, self)

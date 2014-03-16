@@ -14,10 +14,19 @@ except ImportError:
 
 
 class SSHFileSystem(FileSystem):
-    def __init__(self, transport, client, client_name=None, autoclose=True):
-        self.transport = transport
-        self.client = client
-        self.client_name = client_name
+    """
+    An implementation of :obj:`FileSystem <fileutils.interface.FileSystem>`
+    that allows access to a remote machine using SSH and SFTP.
+    """
+    def __init__(self, transport, client=None, client_name=None, autoclose=True):
+        self._transport = transport
+        if client is None:
+            client = transport.open_sftp_client()
+        self._client = client
+        if client_name is None:
+            client_name = (transport.get_username() + "@" +
+                           transport.getpeername()[0])
+        self._client_name = client_name
         self._autoclose = autoclose
         self._enter_count = 0
     
@@ -43,25 +52,17 @@ class SSHFileSystem(FileSystem):
                 # ~/.ssh/id_rsa, which we just pass on
                 key = paramiko.RSAKey.from_private_key_file(os.path.expanduser("~/.ssh/id_rsa"))
                 transport.auth_publickey(username, key)
-            sftp_client = transport.open_sftp_client()
-            return SSHFileSystem(transport, sftp_client, username + "@" + host)
+            return SSHFileSystem(transport, client_name=username + "@" + host)
         except:
             transport.close()
             raise
     
-    @staticmethod
-    def from_transport(transport, autoclose=True):
-        sftp_client = transport.open_sftp_client()
-        return SSHFileSystem(transport, sftp_client,
-                             transport.get_username() + "@" +
-                             transport.getpeername()[0], autoclose=autoclose)
-    
     def close(self):
-        self.transport.close()
+        if self._autoclose:
+            self._transport.close()
     
     def __del__(self):
-        if self._autoclose:
-            self.close()
+        self.close()
     
     def child(self, *path_components):
         return SSHFile(self, posixpath.join("/", path_components))
@@ -69,6 +70,9 @@ class SSHFileSystem(FileSystem):
     @property
     def roots(self):
         return [SSHFile(self, "/")]
+    
+    def __repr__(self):
+        return "<fileutils.SSHFileSystem on {0!s}>".format(self._client_name)
 
 
 class SSHFile(ChildrenMixin, BaseFile):
@@ -92,15 +96,15 @@ class SSHFile(ChildrenMixin, BaseFile):
     _default_block_size = 2**19 # 512 KB
     _sep = "/"
     
-    def __init__(self, connection, path="/"):
-        self._connection = connection
+    def __init__(self, filesystem, path="/"):
+        self._filesystem = filesystem
         self._path = posixpath.normpath(path)
         while self._path.startswith("//"):
             self._path = self._path[1:]
     
     @property
     def _client(self):
-        return self._connection.client
+        return self._filesystem._client
     
     @staticmethod
     def connect(host, username=None, password=None, port=22):
@@ -138,14 +142,14 @@ class SSHFile(ChildrenMixin, BaseFile):
                        transport.getpeername()[0], autoclose=autoclose))
     
     def _with_path(self, new_path):
-        return SSHFile(self._connection, new_path)
+        return SSHFile(self._filesystem, new_path)
     
     def _exec(self, command):
         if isinstance(command, list):
             command = " ".join(pipes.quote(arg) for arg in command)
         # This is copied almost verbatim from
         # paramiko.SSHClient.exec_command
-        channel = self._connection.transport.open_session()
+        channel = self._filesystem._transport.open_session()
         channel.exec_command(command)
         stdin = channel.makefile('wb', -1)
         stdout = channel.makefile('rb', -1)
@@ -153,12 +157,12 @@ class SSHFile(ChildrenMixin, BaseFile):
         return channel, stdin, stdout, stderr
     
     def __enter__(self):
-        self._connection._enter_count += 1
+        self._filesystem._enter_count += 1
         return self
     
     def __exit__(self, *args):
-        self._connection._enter_count -= 1
-        if self._connection._enter_count == 0:
+        self._filesystem._enter_count -= 1
+        if self._filesystem._enter_count == 0:
             self.disconnect()
     
     def disconnect(self):
@@ -171,7 +175,7 @@ class SSHFile(ChildrenMixin, BaseFile):
         disconnect before all such references are garbage collected, if you
         want.
         """
-        self._connection.close()
+        self._filesystem.close()
     
     def get_path_components(self, relative_to=None):
         if relative_to:
@@ -202,7 +206,7 @@ class SSHFile(ChildrenMixin, BaseFile):
     def open_for_reading(self):
         f = self._client.open(self.path, "rb")
         # Keep our connection open as long as a reference to this file is held
-        f._fileutils_connection = self._connection
+        f._fileutils_filesystem = self._filesystem
         return f
     
     @property
@@ -266,11 +270,13 @@ class SSHFile(ChildrenMixin, BaseFile):
     
     def open_for_writing(self, append=False):
         f = self._client.open(self.path, "wb")
-        f._fileutils_connection = self._connection
+        f._fileutils_filesystem = self._filesystem
         return f
     
     def rename_to(self, other):
-        if isinstance(other, SSHFile) and self._connection is other._connection:
+        # If we're on the same file system as other, optimize this to a remote
+        # side rename
+        if isinstance(other, SSHFile) and self._filesystem is other._filesystem:
             self._client.rename(self._path, other._path)
         else:
             return BaseFile.rename_to(self, other)
@@ -280,14 +286,16 @@ class SSHFile(ChildrenMixin, BaseFile):
         return self._client.stat(self._path).st_size
 
     def __str__(self):
-        if self._connection.client_name:
-            return "<fileutils.SSHFile {0!r} on {1!s}>".format(self._path, self._connection.client_name)
-        else:
-            return "<fileutils.SSHFile {0!r} on {1!s}>".format(self._path, self._client)
+        return "<fileutils.SSHFile {0!r} on {1!s}>".format(self._path, self._filesystem._client_name)
     
     __repr__ = __str__
 
+
 def ssh_connect(host, username):
+    """
+    Obsolete; use SSHFileSystem.connect instead. Present only for backward
+    compatibility, and will likely be going away soon.
+    """
     import getpass
     t = paramiko.Transport((host, 22))
     t.connect(username=username, password=getpass.getpass("Password: "))
