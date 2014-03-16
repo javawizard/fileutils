@@ -10,16 +10,28 @@ import hashlib
 import collections
 
 class DiskUsage(object):
+    """
+    Disk space and inode usage.
+    
+    Instances of this class are typically obtained from MountPoint.usage.
+    """
     def __init__(self, space, inodes):
         self._space = space
         self._inodes = inodes
     
     @property
     def space(self):
+        """
+        An instance of Usage indicating utilization of disk space.
+        """
         return self._space
     
     @property
     def inodes(self):
+        """
+        An instance of Usage indicating utilization of inodes, or None on
+        platforms (like Windows) that don't have such a concept.
+        """
         return self._inodes
     
     def __repr__(self):
@@ -29,6 +41,10 @@ class DiskUsage(object):
 
 
 class Usage(object):
+    """
+    Usage of a particular file system resource, such as disk space (given in
+    bytes) or inodes.
+    """
     def __init__(self, total, used, available):
         self._total = total
         self._used = used
@@ -36,18 +52,35 @@ class Usage(object):
     
     @property
     def total(self):
+        """
+        Total amount of disk space or inodes available.
+        """
         return self._total
     
     @property
     def used(self):
+        """
+        Amount of disk space or number of inodes currently in use.
+        """
         return self._used
     
     @property
     def available(self):
+        """
+        Amount of free disk space or number of inodes available to the current
+        user.
+        
+        This is often the same as self.free, but things like disk space quotas
+        and blocks reserved for the superuser can make it have a value less
+        than that of self.free.
+        """
         return self._available
     
     @property
     def free(self):
+        """
+        Amount of disk space or number of inodes not currently in use.
+        """
         return self.total - self.used
     
     def __repr__(self):
@@ -55,35 +88,96 @@ class Usage(object):
 
 
 class FileSystem(object):
+    """
+    An abstract class representing an entire file system hierarchy.
+    
+    Instances of this class are typically obtained by directly instantiating
+    its subclasses. The most commonly used subclass, LocalFileSystem, maintains
+    a singleton instance that corresponds to the filesystem of the local
+    machine. Other subclasses include SSHFileSystem.
+    """
     def child(self, path):
+        """
+        Return an instance of BaseFile representing the file located at the
+        specific path. 
+        """
         raise NotImplementedError
     
     @property
     def roots(self):
+        """
+        A list of all of the file system hierarchy roots exposes by this
+        FileSystem instance.
+        
+        On Windows, there will be one root per drive letter. On POSIX systems,
+        there will be exactly one root, namely '/'.
+        """
         raise NotImplementedError
     
     @property
     def mountpoints(self):
+        """
+        A list of MountPoint instances corresponding to all mount points on the
+        system.
+        
+        On Windows, there will be exactly one mount point for each drive
+        letter. On POSIX systems, there will be one mount point per, well,
+        mount point.
+        """
         pass
 
 
 class MountPoint(object):
+    """
+    An abstract class representing mount points on a file system.
+    
+    Instances of this class can be obtained from BaseFile.mountpoint, a
+    property that returns the MountPoint instance on which the file in question
+    resides. They can also be obtained from FileSystem.mountpoints, a property
+    that returns a list of all of the system's mount points.
+    """
     @property
     def filesystem(self):
+        """
+        The FileSystem instance on which this mount point resides.
+        """
         raise NotImplementedError
     
     @property
     def location(self):
+        """
+        The BaseFile instance indicating the directory at which this mount
+        point is mounted.
+        """
         raise NotImplementedError
     
     @property
     def devices(self):
-        # List of MountDevice instances corresponding to the stack of this
-        # mountpoint. Last item is the currently visible device.
+        """
+        A list of instances of MountDevice representing all of the devices
+        currently mounted at this mount point, in the order in which they were
+        attached. The last of these is the device whose data is currently
+        available at this mount point.
+        
+        Not all systems support stacks of devices mounted at the same
+        mount point. For systems that don't support this, there will never be
+        more than one device mounted at any given mount point. For systems that
+        do (such as Linux), unmounting a mount point simply causes the last
+        device attached to the mount point to be popped off the stack, and the
+        next device's data is made available at that mount point.
+        """
         raise NotImplementedError
     
     @property
     def device(self):
+        """
+        An instance of MountDevice representing the topmost device currently
+        mounted at this mount point. This is the device whose data is currently
+        available at this mount point.
+        
+        This is just short for self.devices[-1], but if self.devices is empty,
+        None will be returned instead.
+        """
         devices = self.devices
         if devices:
             return self.devices[-1]
@@ -92,9 +186,16 @@ class MountPoint(object):
     
     @property
     def usage(self):
+        """
+        An instance of DiskUsage indicating the current disk and inode usage
+        for this mount point.
+        """
         raise NotImplementedError
     
     def unmount(self, force=True):
+        """
+        Unmount the topmost device attached to this mountpoint.
+        """
         raise NotImplementedError
     
     @property
@@ -115,25 +216,66 @@ class MountPoint(object):
 
 
 class MountDevice(object):
+    """
+    A device as mounted under a particular mount point.
+    
+    Note: The API of this class is still in flux. I'm particularly considering
+    splitting it into two classes whose names are yet to be decided, one of
+    which will contain every property except subpath and the other of which
+    will contain two properties, subpath and device, the latter pointing to an
+    instance of the former class. Bear this in mind when writing code that uses
+    this class.
+    """
     @property
     def location(self):
+        """
+        The location of this device as a BaseFile instance, if the subclass
+        exposes mount point devices in the form of a file in the file system
+        hierarchy. On Linux, for example, this might be something like
+        File('/dev/sda1'). On Windows this will be None, and it will also be
+        None on Linux for special file systems like tmpfs that don't have any
+        representation in the file system hierarchy.
+        """
         raise NotImplementedError
     
     @property
     def device(self):
+        """
+        A textual representation of this device, if the subclass exposes such
+        information.
+        
+        If self.location is not None, this will be self.location.path.
+        
+        On Linux, for special file system types, this will be the name of the
+        type in question; 'tmpfs', for example.
+        """
         raise NotImplementedError
     
     @property
     def subpath(self):
+        """
+        The subpath, as a string containing an absolute path, of the file
+        system located on this device being exposed to the mount point on which
+        this device is mounted, or None if the subclass doesn't support such a
+        notion.
+        
+        For most mount devices that support this, this will just be "/". It can
+        be a different path when a nested path within a particular file system
+        is exposed with a bind mount; in such a case, this is the path within
+        the file system being exposed at the mount point on which this device
+        is mounted.
+        """
         raise NotImplementedError
 
 
 class BaseFile(object):
     """
-    The base class from which all fileutils objects inherit.
+    An abstract class representing an absolute path to a file on a particular
+    FileSystem instance.
     
-    Instances of this class don't do anything useful on their own. You'll want
-    to instantiate one of this class's subclasses instead.
+    Instances of this class can be obtained from FileSystem.child(). They can
+    also be obtained from FileSystem.roots, a property providing a list of all
+    of the file system's root directories.
     """
     _default_block_size = 16384
     
@@ -164,6 +306,9 @@ class BaseFile(object):
     
     @property
     def mountpoint(self):
+        """
+        The MountPoint instance on which this file resides.
+        """
         raise NotImplementedError
     
     def get_path_components(self, relative_to=None):
@@ -446,6 +591,11 @@ class BaseFile(object):
     
     @property
     def is_mountpoint(self):
+        """
+        True if this File is a mount point, False if it isn't.
+        
+        This is just short for self.mountpoint.location == self.
+        """
         return self.mountpoint.location == self
     
     def check_folder(self):
