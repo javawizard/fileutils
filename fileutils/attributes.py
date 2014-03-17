@@ -60,6 +60,15 @@ class PosixPermissions(AttributeSet):
     
     @property
     def mode(self):
+        """
+        The numerical mode of this file.
+        
+        Setting the value of this property causes a call to chmod to be made,
+        unless this file is a symbolic link and the underlying platform doesn't
+        support custom permissions on symbolic links (Linux is such a
+        platform); in such a case, nothing whatsoever happens, and the new mode
+        is silently ignored.
+        """
         raise NotImplementedError
     
     def set(self, mask, value):
@@ -75,6 +84,21 @@ class PosixPermissions(AttributeSet):
     
     @property
     def user(self):
+        """
+        An object with three properties: read, write, and execute. These
+        properties are all booleans corresponding to the respective user
+        permission bit. They can be set to new values to modify the permissions
+        of the file in question.
+        
+        For example, one can see if this file's owner has permission to execute
+        this file with::
+        
+            self.user.execute
+        
+        and one can mark the file as being executable by its owner with::
+        
+            self.user.execute = True
+        """
         return _ModeAccessor(self, stat.S_IRUSR, stat.S_IWUSR, stat.S_IXUSR)
     
     @property
@@ -87,6 +111,11 @@ class PosixPermissions(AttributeSet):
     
     @property
     def setuid(self):
+        """
+        True if this file's setuid bit is set, false if it isn't.
+        
+        This property can be modified to set or clear the file's setuid flag.
+        """
         return self.get(stat.S_ISUID)
     
     @setuid.setter
@@ -95,6 +124,11 @@ class PosixPermissions(AttributeSet):
     
     @property
     def setgid(self):
+        """
+        True if this file's setgid bit is set, false if it isn't.
+        
+        This property can be modified to set or clear the file's setgid flag.
+        """
         return self.get(stat.S_ISGID)
     
     @setgid.setter
@@ -137,29 +171,39 @@ class PosixPermissions(AttributeSet):
             # Clear all executable bits
             mode &= ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         self.mode = mode
-    
-    # Note to self: add execute here that returns... probably True if any user
-    # can execute, and setting it sets execute for... probably all users who
-    # can read. That way, the executable bit but nothing else can be copied
-    # from one file's permissions to anohter with a.execute = b.execute.
-    # (And so note that setting execute to false would clear all three execute
-    # bits.)
-
 
 
 class ExtendedAttributes(AttributeSet):
+    """
+    An attribute set providing access to a file's extended user attributes.
+    """
     copy_by_default = True
     
     def get(self, name):
+        """
+        Get the value of the extended attribute with the specified name, or
+        raise KeyError if no such extended attribute exists.
+        """
         raise NotImplementedError
     
     def set(self, name, value):
+        """
+        Set the value of the specified extended attribute to the specified
+        value.
+        """
         raise NotImplementedError
     
     def list(self):
+        """
+        Return a list of strings naming all of the extended attributes present
+        on this file.
+        """
         raise NotImplementedError
     
     def delete(self, name):
+        """
+        Delete the extended user attribute with the specified name.
+        """
         raise NotImplementedError
     
     def copy_to(self, other):

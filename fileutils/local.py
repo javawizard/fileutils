@@ -172,8 +172,9 @@ class PosixLocalExtendedAttributes(ExtendedAttributes):
     # Python 3.3 added native extended attribute support in the form of
     # os.listxattr and family. When fileutils gains Python 3 compatibility, we
     # should use os.listxattr and family if they exist.
-    def __init__(self, path):
-        self._path = path
+    def __init__(self, f):
+        self._file = f
+        self._path = f.path
     
     def get(self, name):
         try:
@@ -212,20 +213,31 @@ class PosixLocalExtendedAttributes(ExtendedAttributes):
                 raise
     
     def __repr__(self):
-        return "PosixLocalExtendedAttributes({0!r})".format(self._path)
+        return "<PosixLocalExtendedAttributes for {0!r}>".format(self._file)
+    
+    __str__ = __repr__
 
 
 class PosixLocalPermissions(PosixPermissions):
-    def __init__(self, path):
-        self._path = path
+    def __init__(self, f):
+        self._file = f
     
     @property
     def mode(self):
-        return os.stat(self._path).st_mode
+        return os.stat(self._file.path).st_mode
     
     @mode.setter
     def mode(self, value):
-        os.chmod(self._path, value)
+        # This is racy in the face of the underlying file being replaced with a
+        # symlink, but, as Linux doesn't provide lchmod, I'm not sure there's
+        # a better way to do this... Patches welcome.
+        if not self._file.is_link:
+            os.chmod(self._file.path, value)
+    
+    def __repr__(self):
+        return "<PosixLocalPermissions for {0!r}>".format(self._file)
+    
+    __str__ = __repr__
 
 
 class File(ChildrenMixin, BaseFile):
@@ -591,9 +603,9 @@ class PosixFile(File):
     def __init__(self, *args, **kwargs):
         File.__init__(self, *args, **kwargs)
         
-        self.attributes[PosixPermissions] = PosixLocalPermissions(self.path)
+        self.attributes[PosixPermissions] = PosixLocalPermissions(self)
         if xattr:
-            self.attributes[ExtendedAttributes] = PosixLocalExtendedAttributes(self.path)
+            self.attributes[ExtendedAttributes] = PosixLocalExtendedAttributes(self)
         
     def __str__(self):
         return "fileutils.PosixFile(%r)" % self._path
