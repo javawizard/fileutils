@@ -129,7 +129,7 @@ class FileSystem(object):
         A sensible "default" root for this file system, or None if there isn't
         really any sensible default.
         
-        The default implementation just returns self.roots[0]. 
+        The default implementation just returns self.roots[0].
         """
         return self.roots[0]
     
@@ -142,8 +142,14 @@ class FileSystem(object):
         On Windows, there will be exactly one mount point for each drive
         letter. On POSIX systems, there will be one mount point per, well,
         mount point.
+        
+        FileSystem implementations like URLFileSystem that don't support a
+        proper notion of mount points are permitted to return None from this
+        function.
+        
+        The default implementation of this method just returns None.
         """
-        pass
+        return None
 
 
 class MountPoint(object):
@@ -207,15 +213,18 @@ class MountPoint(object):
     def usage(self):
         """
         An instance of :obj:`DiskUsage` indicating the current disk and inode
-        usage for this mount point.
+        usage for this mount point, or None if this MountPoint implementation
+        does not expose disk usage information.
         """
         raise NotImplementedError
     
     def unmount(self, force=True):
         """
-        Unmount the topmost device attached to this mount point.
+        Unmount the device whose data is currently visible at this mount point.
         """
         raise NotImplementedError
+    
+    umount = unmount
     
     @property
     def total_space(self):
@@ -340,9 +349,13 @@ class BaseFile(object):
     @property
     def mountpoint(self):
         """
-        The MountPoint instance on which this file resides.
+        The MountPoint instance on which this file resides, or None if this
+        file is an instance of a class like URL that doesn't support mount
+        points.
+        
+        The default implementation of this method just returns None.
         """
-        raise NotImplementedError
+        return None
     
     def get_path_components(self, relative_to=None):
         """
@@ -627,11 +640,10 @@ class BaseFile(object):
         """
         True if this File is a mount point, False if it isn't.
         
-        This is just short for self.mountpoint.location == self.
+        This is just short for self.mountpoint.location == self, but with a
+        check to ensure that self.mountpoint.location is not None.
         """
         mountpoint = self.mountpoint
-        # Purely for compatibility with SSHFile until it gains proper support
-        # for mount points
         if mountpoint is None:
             return False
         return self.mountpoint.location == self
@@ -653,19 +665,20 @@ class BaseFile(object):
             raise generate(exceptions.FileNotFoundError, self)
     
     def copy_to(self, other, overwrite=False, dereference_links=True,
-                attribute_sets=None):
+                which_attributes={}):
         """
-        Copies the contents of this file to the specified file object. An
-        exception will be thrown if the specified file already exists and
-        overwrite is False.
+        Copies the contents and attributes of this file or directory to the
+        specified file. An exception will be thrown if the specified file
+        already exists and overwrite is False.
         
         If dereference_links is True (the default), symbolic links encountered
         during copying will be dereferenced and their targets copied in their
         place. If dereference_links is False, such links will be recreated
-        purely as symbolic links.
+        purely as symbolic links. Note that this could render some symbolic
+        links broken.
         
-        This also does not currently preserve file attributes or permissions;
-        such abilities will be added soon.
+        which_attributes is a dictionary indicating which attributes are to be
+        copied, in the same format as that given to :obj:`copy_attributes_to`\ .
         """
         # If self.is_folder is True, requires isinstance(self, Listable) and
         # isinstance(other, Hierarchy) when we implement support for folders.
@@ -689,7 +702,8 @@ class BaseFile(object):
         elif file_type is FOLDER:
             other.create_folder()
             for child in self.children:
-                child.copy_into(other)
+                child.copy_into(other, dereference_links=dereference_links,
+                                which_attributes=which_attributes)
         elif file_type is LINK:
             other.link_to(self.link_target)
         elif file_type is None:
@@ -700,9 +714,10 @@ class BaseFile(object):
             raise generate(exceptions.FileNotFoundError, source)
         else:
             raise NotImplementedError(str(self))
-        source.copy_attributes_to(other, attribute_sets=attribute_sets)
+        source.copy_attributes_to(other, which_attributes=which_attributes)
 
-    def copy_into(self, other, overwrite=False):
+    def copy_into(self, other, overwrite=False, dereference_links=True,
+                  which_attributes={}):
         """
         Copies this file to an identically named file inside the specified
         folder. This is just shorthand for self.copy_to(other.child(self.name))
@@ -711,9 +726,12 @@ class BaseFile(object):
         
         The newly-created file in the specified folder will be returned as per
         other.child(self.name).
+        
+        overwrite, dereference_links, and which_attributes have the same
+        meanings as their respective arguments given to copy_to.
         """
         new_file = other.child(self.name)
-        self.copy_to(new_file, overwrite)
+        self.copy_to(new_file, overwrite, dereference_links, which_attributes)
         return new_file
 
     def dereference(self, recursive=False):

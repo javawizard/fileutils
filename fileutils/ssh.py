@@ -214,8 +214,38 @@ class SSHFile(ChildrenMixin, BaseFile):
         self._filesystem.close()
     
     @property
-    def mountpoint(self):
-        return None
+    def filesystem(self):
+        return self._filesystem
+    
+    @property
+    def url(self):
+        """
+        An ssh:// URL corresponding to the location of this file.
+        
+        A few important notes:
+        
+         * If this SSHFile's underlying SSHFileSystem was constructed by
+           passing in a paramiko.Transport instance directly, the hostname in
+           the resulting URL is only a (well educated) guess as to the remote
+           end's IP address. If it was instead constructed via
+           SSHFileSystem.connect or SSHFile.connect, the hostname in the
+           resulting URL will be the same as that passed to connect().
+           
+         * The password, if any, given to SSHFile.connect won't be preserved by
+           this property as (by design) the password isn't stored anywhere
+           after authentication.
+           
+         * The path of the returned URL will start with two slashes, something
+           like ssh://host//path. This prevents it from being interpreted as a
+           path relative to the user's home directory by some applications
+           (like Mercurial) that interpret paths with only one leading slash as
+           such. 
+        """
+        # This is only a (well educated) guess if our underlying SSHFileSystem
+        # was passed a paramiko.Transport directly, but there's not much better
+        # we can do.
+        return "ssh://{0}/{1}".format(self.filesystem._client_name,
+                                     self._path)
     
     def get_path_components(self, relative_to=None):
         if relative_to:

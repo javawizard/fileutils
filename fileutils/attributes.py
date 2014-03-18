@@ -47,6 +47,9 @@ class AttributeSet(object):
         BaseFile.copy_to and BaseFile.copy_into) consult this property when
         they're not given further direction as to which attribute sets should
         be copied from one file to another.
+        
+        All of the subclasses of AttributeSet provide implementations of this
+        property. Subclasses of those classes shouldn't need to override this.
         """
         raise NotImplementedError
 
@@ -171,13 +174,16 @@ class PosixPermissions(AttributeSet):
             # Clear all executable bits
             mode &= ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         self.mode = mode
+    
+    def copy_to(self, other):
+        other.mode = self.mode
 
 
 class ExtendedAttributes(AttributeSet):
     """
     An attribute set providing access to a file's extended user attributes.
     """
-    copy_by_default = True
+    copy_by_default = False
     
     def get(self, name):
         """
@@ -207,10 +213,10 @@ class ExtendedAttributes(AttributeSet):
         raise NotImplementedError
     
     def copy_to(self, other):
-        # Delete existing attributes
-        for name in other.list():
-            other.delete(name)
-        # Then copy over our attributes
+        # Copy over our attributes. Note that we specifically don't delete the
+        # other file's existing attributes first to avoid trampling on other
+        # attribute sets that are just fronts for certain extended attributes
+        # (like the future FileMimeType will be, at least on Linux).
         for name in self.list():
             try:
                 other.set(name, self.get(name))

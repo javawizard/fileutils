@@ -18,6 +18,8 @@ import urllib
 import string
 import errno
 import subprocess
+import re
+import traceback
 
 # I'm avoiding dependencies on pywin32 as long as possible... We'll see how
 # long I can turn out.
@@ -34,7 +36,11 @@ _delete_on_exit = set()
 @atexit.register
 def _():
     for f in _delete_on_exit:
-        f.delete(ignore_missing=True)
+        try:
+            f.delete(ignore_missing=True)
+        except:
+            print "WARNING: Couldn't delete local file {0!r}:".format(f.path)
+            traceback.print_exc()
 
 
 _local_file_system = None
@@ -54,6 +60,54 @@ class LocalFileSystem(FileSystem):
     
     def child(self, *path_components):
         return File(*path_components)
+    
+    def cache(self, file_to_cache):
+        """
+        Copy the specified file or directory (a BaseFile instance) onto the
+        local machine in the system temporary directory and return a LocalCache
+        instance wrapping the temporary copy, unless it's already a local file,
+        in which case a LocalCache wrapping the file itself will be returned.
+        
+        The returned LocalCache instance can be used as a context manager like
+        so::
+        
+            with LocalFileSystem().cache(some_file) as local_file:
+                ...
+        
+        During the execution of the above block, local_file will be a File
+        instance pointing to the local temporary copy of the file. After the
+        block exits, the file will be deleted (unless it was already a local
+        file, in which case nothing whatsoever will happen).
+        
+        The file can also be accessed directly from the LocalCache instance's
+        location property.
+        
+        The newly created temporary directory containing the local temporary
+        copy of the file will have its delete_on_exit property set to True.
+        This allows the file to be passed around without needing to use the
+        returned LocalCache instance as a context manager, if you so desire.
+        (delete_on_exit will not, of course, be set to True if the file was
+        already a local file.)
+        """
+        if file_to_cache.filesystem == self:
+            # Local file
+            return LocalCache(None, file_to_cache)
+        else:
+            # Remote file
+            cache = create_temporary_folder(delete_on_exit=True)
+            location = file_to_cache.copy_into(cache)
+            return LocalCache(cache, location)
+    
+    def __cmp__(self, other):
+        if other is _local_file_system:
+            return 0
+        else:
+            return NotImplemented
+    
+    def __hash__(self):
+        # Should probably return a more random constant here, maybe just let
+        # this pass through to object.__hash__
+        return 0
 
 
 class PosixLocalFileSystem(LocalFileSystem):
@@ -240,6 +294,43 @@ class PosixLocalPermissions(PosixPermissions):
     __str__ = __repr__
 
 
+class LocalCache(object):
+    """
+    An object representing a remote file that's been cached locally.
+    These can be obtained from LocalFileSystem.cache(). See that method's
+    docstring for more information.
+    """
+    def __init__(self, cache, location):
+        self._cache = cache
+        self._location = location
+    
+    @property
+    def location(self):
+        """
+        The local temporary file or directory, as a BaseFile object. This file
+        contains the same data as the remote file passed into
+        LocalFileSystem.cache(). It also has the same name.
+        """
+        return self._location
+    
+    @property
+    def cache(self):
+        """
+        The temporary directory created to contain the local temporary file, or
+        None if the file was already a local file. This is the directory that
+        will be deleted by self.__exit__.
+        """
+        return self._cache
+    
+    def __enter__(self):
+        return self.location
+    
+    def __exit__(self):
+        if self._cache:
+            self._cache.delete()
+            self._cache.delete_on_exit = False
+
+
 class File(ChildrenMixin, BaseFile):
     """
     An object representing a file or folder on the local filesystem. File
@@ -296,10 +387,14 @@ class File(ChildrenMixin, BaseFile):
         else:
             path = ""
         # Make the pathname absolute
-        path = os.path.abspath(path)
+        path = self._resolve_path(path)
         self._path = path
         
         self.attributes = {}
+    
+    @staticmethod
+    def _resolve_path(path):
+        return os.path.abspath(path)
     
     def child(self, *names):
         return File(os.path.join(self.path, *names))
@@ -606,6 +701,13 @@ class PosixFile(File):
         self.attributes[PosixPermissions] = PosixLocalPermissions(self)
         if xattr:
             self.attributes[ExtendedAttributes] = PosixLocalExtendedAttributes(self)
+    
+    @staticmethod
+    def _resolve_path(path):
+        # Strip off double leading slashes
+        while path[0:2] == '//':
+            path = path[1:]
+        return File._resolve_path(path)
         
     def __str__(self):
         return "fileutils.PosixFile(%r)" % self._path
@@ -614,10 +716,24 @@ class PosixFile(File):
 
 
 class WindowsFile(File):
+    @staticmethod
+    def _resolve_path(path):
+        # If it looks like a path with a drive letter that has leading slashes
+        # (most likely as artifacts from URL parsing), strip them off. Windows
+        # doesn't allow colons in paths, so this won't ever mistakenly strip
+        # off slashes.
+        if re.match('^/+[a-zA-Z]:', path):
+            path = path.lstrip('/')
+        return File._resolve_path(path)
+    
     def __str__(self):
         return "fileutils.WindowsFile(%r)" % self._path
     
     __repr__ = __str__
+
+
+# Alias in preparation for the eventual rename of File to LocalFile
+LocalFile = File
 
 
 def create_temporary_folder(suffix="", prefix="tmp", parent=None,
