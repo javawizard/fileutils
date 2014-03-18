@@ -15,8 +15,35 @@ except ImportError:
 
 class SSHFileSystem(FileSystem):
     """
-    An implementation of :obj:`FileSystem <fileutils.interface.FileSystem>`
-    that allows access to a remote machine using SSH and SFTP.
+    A concrete FileSystem implementation allowing file operations to be carried
+    out on a remote host via SSH and SFTP.
+    
+    Instances of SSHFileSystem can be constructed by connecting to a remote
+    server with SSHFileSystem.connect::
+    
+        fs = SSHFileSystem.connect(hostname, username, password)
+    
+    They can also be constructed around an instance of paramiko.Transport::
+    
+        fs = SSHFileSystem.from_transport(transport)
+    
+    Instances of SSHFile can then be obtained using self.child(path), or from
+    the :obj:`root` property, an SSHFile pointing to "/".
+
+    SSHFileSystem instances have a __del__ that automatically closes their
+    underlying paramiko.Transport on garbage collection. There's therefore no
+    need to do anything special with an SSHFileSystem instance when you're done
+    with it, although you can force it to close before it's garbage collected
+    by calling its close() function, or by using it as a context manager::
+    
+        with SSHFileSystem.connect(...) as fs:
+            ...
+    
+    .. note::
+    
+       SSHFileSystem does not yet implement the full FileSystem interface.
+       Specifically, attempting to access SSHFileSystem.mountpoints will result
+       in a NotImplementedError, and SSHFile.mountpoint is always None.
     """
     def __init__(self, transport, client=None, client_name=None, autoclose=True):
         self._transport = transport
@@ -64,6 +91,15 @@ class SSHFileSystem(FileSystem):
     def __del__(self):
         self.close()
     
+    def __enter__(self):
+        self._enter_count += 1
+        return self
+    
+    def __exit__(self, *args):
+        self._enter_count -= 1
+        if self._filesystem._enter_count == 0:
+            self.close()
+    
     def child(self, *path_components):
         return SSHFile(self, posixpath.join("/", path_components))
     
@@ -77,23 +113,41 @@ class SSHFileSystem(FileSystem):
 
 class SSHFile(ChildrenMixin, BaseFile):
     """
-    A concrete file implementation allowing file operations to be carried
+    A concrete BaseFile implementation allowing file operations to be carried
     out on a remote host via SSH and SFTP.
     
-    Instances of SSHFile can be constructed around an instance of
-    paramiko.Transport by doing::
+    Instances of SSHFile can be obtained from an SSHFileSystem via its
+    child(path) method, or from its root property::
     
-        f = SSHFile.from_transport(transport)
+        f = SSHFileSystem.connect(hostname, username, password).root
+        f = SSHFileSystem(paramiko_transport).root
+        f = SSHFileSystem(paramiko_transport).child("/some/path")
     
-    They can also be obtained from :obj:`~SSHFile.connect`.
+    They can also be obtained from some convenience functions that construct an
+    SSHFileSystem for you, such as connect and from_transport::
     
-    SSHFile instances wrap their underlying paramiko.Transport instances with
-    an object that automatically closes them on garbage collection. There's
-    therefore no need to do anything special with an SSHFile when you're done
-    with it, although you can use it as a context manager to force it to close
-    before it's garbage collected.
+        f = SSHFile.connect(hostname, username, password)
+        f = SSHFile.from_transport(paramiko_transport)
+    
+    SSHFileSystem instances (to which all SSHFile instance hold a reference)
+    wrap their underlying paramiko.Transport instances with an object that
+    automatically closes them on garbage collection. There's therefore no need
+    to do anything special with an SSHFile when you're done with it, although
+    you can use it as a context manager to force its underlying SSHFileSystem
+    to close before it's garbage collected.
+
+    SSHFileSystem instances (to which all SSHFile instances hold a reference)
+    have a __del__ that automatically closes their underlying
+    paramiko.Transport on garbage collection. There's therefore no need to do
+    anything special with an SSHFile instance when you're done with it,
+    although you can force it to close before it's garbage collected by calling
+    self.filesystem.close() on it, or by using it (or its underlying
+    SSHFileSystem) as a context manager::
+    
+        with SSHFile.connect(...) as f:
+            ...
     """
-    _default_block_size = 2**19 # 512 KB
+    _default_block_size = 2**18 # 256 KB
     _sep = "/"
     
     def __init__(self, filesystem, path="/"):
@@ -116,30 +170,11 @@ class SSHFile(ChildrenMixin, BaseFile):
         attempted. If username is None, the current user's username will be
         used.
         """
-        if username is None:
-            username = getpass.getuser()
-        transport = paramiko.Transport((host, port))
-        try:
-            transport.start_client()
-            if password:
-                transport.auth_password(username, password)
-            else:
-                # This will raise an exception if the user doesn't have a
-                # ~/.ssh/id_rsa, which we just pass on
-                key = paramiko.RSAKey.from_private_key_file(os.path.expanduser("~/.ssh/id_rsa"))
-                transport.auth_publickey(username, key)
-            sftp_client = transport.open_sftp_client()
-            return SSHFile(_SSHConnection(transport, sftp_client, username + "@" + host))
-        except:
-            transport.close()
-            raise
+        return SSHFileSystem.connect(host, username, password, port).root
     
     @staticmethod
     def from_transport(transport, autoclose=True):
-        sftp_client = transport.open_sftp_client()
-        return SSHFile(_SSHConnection(transport, sftp_client,
-                       transport.get_username() + "@" +
-                       transport.getpeername()[0], autoclose=autoclose))
+        return SSHFileSystem(transport, autoclose=autoclose).root
     
     def _with_path(self, new_path):
         return SSHFile(self._filesystem, new_path)
@@ -157,16 +192,17 @@ class SSHFile(ChildrenMixin, BaseFile):
         return channel, stdin, stdout, stderr
     
     def __enter__(self):
-        self._filesystem._enter_count += 1
+        self._filesystem.__enter__()
         return self
     
     def __exit__(self, *args):
-        self._filesystem._enter_count -= 1
-        if self._filesystem._enter_count == 0:
-            self.disconnect()
+        self._filesystem.__exit__()
     
     def disconnect(self):
         """
+        Note: This function is deprecated, and will be removed in the future.
+        Use self.filesystem.close() instead.
+        
         Disconnect this SSHFile's underlying connection.
         
         You usually won't need to call this explicitly; connections are
@@ -176,6 +212,10 @@ class SSHFile(ChildrenMixin, BaseFile):
         want.
         """
         self._filesystem.close()
+    
+    @property
+    def mountpoint(self):
+        return None
     
     def get_path_components(self, relative_to=None):
         if relative_to:

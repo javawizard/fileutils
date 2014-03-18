@@ -629,6 +629,11 @@ class BaseFile(object):
         
         This is just short for self.mountpoint.location == self.
         """
+        mountpoint = self.mountpoint
+        # Purely for compatibility with SSHFile until it gains proper support
+        # for mount points
+        if mountpoint is None:
+            return False
         return self.mountpoint.location == self
     
     def check_folder(self):
