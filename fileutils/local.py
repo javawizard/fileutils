@@ -422,7 +422,7 @@ class File(ChildrenMixin, BaseFile):
         # Build up a mountpoint dictionary
         mountpoints = self.filesystem.mountpoints
         if mountpoints is None:
-            return False
+            return None
         mountpoint_dict = dict((m.location, m)
                                for m in mountpoints)
         for f in self.get_ancestors(including_self=True):
