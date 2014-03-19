@@ -113,7 +113,7 @@ class LocalFileSystem(FileSystem):
 class PosixLocalFileSystem(LocalFileSystem):
     @property
     def roots(self):
-        return File("/")
+        return [File("/")]
     
     @property
     def mountpoints(self):
@@ -127,7 +127,7 @@ class PosixLocalFileSystem(LocalFileSystem):
                     if location not in mountpoints:
                         mountpoints[location] = (PosixLocalMountPoint(location))
             return list(mountpoints.values())
-        raise Exception("Unsupported platform")
+        return None
 
 
 class WindowsLocalFileSystem(LocalFileSystem):
@@ -216,7 +216,8 @@ class PosixLocalMountPoint(LocalMountPoint):
 
 
 class WindowsMountPoint(LocalMountPoint):
-    pass
+    def __init__(self, location):
+        self._location = location
 
 
 _local_file_system = LocalFileSystem()
@@ -325,7 +326,7 @@ class LocalCache(object):
     def __enter__(self):
         return self.location
     
-    def __exit__(self):
+    def __exit__(self, *args):
         if self._cache:
             self._cache.delete()
             self._cache.delete_on_exit = False
@@ -419,8 +420,11 @@ class File(ChildrenMixin, BaseFile):
     @property
     def mountpoint(self):
         # Build up a mountpoint dictionary
+        mountpoints = self.filesystem.mountpoints
+        if mountpoints is None:
+            return None
         mountpoint_dict = dict((m.location, m)
-                               for m in self.filesystem.mountpoints)
+                               for m in mountpoints)
         for f in self.get_ancestors(including_self=True):
             try:
                 return mountpoint_dict[f]
