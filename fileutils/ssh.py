@@ -70,6 +70,7 @@ class SSHFileSystem(FileSystem):
         if username is None:
             username = getpass.getuser()
         transport = paramiko.Transport((host, port))
+        transport.window_size = 2**26 # 64 MB
         try:
             transport.start_client()
             if password:
