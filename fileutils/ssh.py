@@ -98,7 +98,7 @@ class SSHFileSystem(FileSystem):
     
     def __exit__(self, *args):
         self._enter_count -= 1
-        if self._filesystem._enter_count == 0:
+        if self._enter_count == 0:
             self.close()
     
     def child(self, *path_components):
