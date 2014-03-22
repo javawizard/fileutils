@@ -1,6 +1,7 @@
 from fileutils.interface import BaseFile, FileSystem, MountPoint
 from fileutils.mixins import ChildrenMixin
 from fileutils.constants import FILE, FOLDER, LINK
+from fileutils import local, exceptions
 import os.path # for expanduser, used to find ~/.ssh/id_rsa
 import posixpath
 import stat
@@ -109,6 +110,148 @@ class SSHFileSystem(FileSystem):
     
     def __repr__(self):
         return "<fileutils.SSHFileSystem on {0!s}>".format(self._client_name)
+
+
+class AuthenticationMethod(object):
+    """
+    Class of methods that can be used to authenticate to an SSH server.
+    
+    The various subclasses
+    """
+    def authenticate(self, transport):
+        """
+        Authenticate to the specified transport using this method.
+        """
+        raise NotImplementedError
+
+
+class FirstOf(AuthenticationMethod):
+    """
+    An authentication method that tries several other methods and succeeds once
+    one of them does. If all of the methods fail, it fails.
+    """
+    def __init__(self, *methods):
+        """
+        Create a new FirstOf authentication method that will attempt to
+        authenticate using the specified authentication methods.
+        """
+        self.methods = methods
+    
+    def authenticate(self, transport):
+        failures = []
+        for method in self.methods:
+            try:
+                method.authenticate(transport)
+                return
+            except paramiko.AuthenticationException as e:
+                failures.append(e)
+        raise paramiko.AuthenticationException(
+            'Authentication methods {0!r} failed with errors {1!r}'
+            .format(self.methods, failures))
+    
+    def __repr__(self):
+        return 'FirstOf({0})'.format(', '.join(repr(m) for m in self.methods))
+    
+    __str__ = __repr__
+
+
+class Password(AuthenticationMethod):
+    """
+    An authentication method that authenticates using a password.
+    """
+    def __init__(self, username, password, fallback=True):
+        """
+        Create a Password authentication method that will authenticate using
+        the specified username and password.
+        
+        username, password, and fallback are passed onto the underlying call
+        to paramiko.Transport.auth_password.
+        """
+        self.username = username
+        self.password = password
+        self.fallback = fallback
+    
+    def authenticate(self, transport):
+        transport.auth_password(self.username, self.password, fallback=self.fallback)
+    
+    def __repr__(self):
+        return ('Password({0!r}, {1!r}, fallback={2!r})'
+                .format(self.username, self.password, self.fallback))
+    
+    __str__ = __repr__
+
+
+class Key(AuthenticationMethod):
+    """
+    An authentication method that authenticates using a private key.
+    
+    Currently, only RSA keys are supported, and keys that require a passphrase
+    are not yet supported. I plan on adding such support in the near future.
+    """
+    def __init__(self, username, key, required=False):
+        """
+        Create a Key authentication method that will authenticate using the
+        specified username and private key.
+        
+        The key can be an instance of any subclass of paramiko.PKey (such as
+        paramiko.RSAKey), a BaseFile instance (in which case the file in
+        question will be read and its contents used as the key), or a string
+        representing a local path to a key file.
+        
+        If required is False and key is a BaseFile or a local path that does
+        not exist, the returned Key instance will do nothing (but raise an
+        AuthenticationException). Otherwise, a
+        fileutils.exceptions.FileNotFoundError will be raised.
+        """
+        self.username = username
+        # If it's a file path, convert it into a File instance
+        if isinstance(key, basestring):
+            key = local.File(key)
+        # Then try to load it
+        if isinstance(key, paramiko.PKey):
+            self.key = key
+        elif isinstance(key, BaseFile):
+            try:
+                stream = key.open()
+            except exceptions.FileNotFoundError:
+                if required:
+                    raise
+                else:
+                    self.key = None
+            else:
+                # TODO: Add support for other types besides RSAKey... Can we
+                # detect the type of key on the fly? Also add support for key
+                # passwords.
+                self.key = paramiko.RSAKey.from_private_key(stream)
+        else:
+            raise Exception("Unsupported key type: {0!r}".format(key))
+    
+    def authenticate(self, transport):
+        if self.key is None:
+            raise paramiko.AuthenticationException('The underlying key file does not exist')
+        transport.auth_publickey(self.username, self.keys)
+
+
+class Agent(AuthenticationMethod):
+    """
+    An authentication method that authenticates using an SSH agent.
+    """
+    def __init__(self, username):
+        """
+        Create a new Agent authenticate method that will authenticate using the
+        specified username and the keys made available by the local SSH agent.
+        """
+        pass
+    
+    def authenticate(self, transport):
+        agent = paramiko.Agent()
+        keys = agent.get_keys()
+        FirstOf([Key(self.username, key) for key in keys]).authenticate(transport)
+    
+    def __repr__(self):
+        return 'Agent({0!r})'.format(self.username)
+    
+    __str__ = __repr__
 
 
 class SSHFile(ChildrenMixin, BaseFile):
