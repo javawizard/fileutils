@@ -59,7 +59,8 @@ class SSHFileSystem(FileSystem):
         self._enter_count = 0
     
     @staticmethod
-    def connect(host, username=None, password=None, port=22):
+    def connect(host, username=None, password=None, port=22,
+                authentication=None):
         """
         Connect to an SSH server and return an SSHFileSystem connected to the
         server.
@@ -112,7 +113,7 @@ class SSHFileSystem(FileSystem):
         return "<fileutils.SSHFileSystem on {0!s}>".format(self._client_name)
 
 
-class AuthenticationMethod(object):
+class Authenticator(object):
     """
     Class of methods that can be used to authenticate to an SSH server.
     
@@ -125,7 +126,7 @@ class AuthenticationMethod(object):
         raise NotImplementedError
 
 
-class FirstOf(AuthenticationMethod):
+class FirstOf(Authenticator):
     """
     An authentication method that tries several other methods and succeeds once
     one of them does. If all of the methods fail, it fails.
@@ -155,7 +156,7 @@ class FirstOf(AuthenticationMethod):
     __str__ = __repr__
 
 
-class Password(AuthenticationMethod):
+class Password(Authenticator):
     """
     An authentication method that authenticates using a password.
     """
@@ -181,7 +182,7 @@ class Password(AuthenticationMethod):
     __str__ = __repr__
 
 
-class Key(AuthenticationMethod):
+class Key(Authenticator):
     """
     An authentication method that authenticates using a private key.
     
@@ -232,7 +233,7 @@ class Key(AuthenticationMethod):
         transport.auth_publickey(self.username, self.keys)
 
 
-class Agent(AuthenticationMethod):
+class Agent(Authenticator):
     """
     An authentication method that authenticates using an SSH agent.
     """
