@@ -10,8 +10,10 @@ import getpass
 
 try:
     import paramiko
+    PartialAuthentication = paramiko.ssh_exception.PartialAuthentication
 except ImportError:
     paramiko = None
+    PartialAuthentication = None
 
 
 class SSHFileSystem(FileSystem):
@@ -60,7 +62,7 @@ class SSHFileSystem(FileSystem):
     
     @staticmethod
     def connect(host, username=None, password=None, port=22,
-                authentication=None):
+                authenticators=None):
         """
         Connect to an SSH server and return an SSHFileSystem connected to the
         server.
@@ -85,6 +87,16 @@ class SSHFileSystem(FileSystem):
         except:
             transport.close()
             raise
+    
+    @staticmethod
+    def get_default_authenticators():
+        return FirstOf(
+            Agent(),
+            Key(os.path.expanduser('~/.ssh/id_rsa')),
+            Key(os.path.expanduser('~/.ssh/id_dsa')),
+            Key(os.path.expanduser('~/ssh/id_rsa')),
+            Key(os.path.expanduser('~/ssh/id_dsa')),
+        )
     
     def close(self):
         if self._autoclose:
@@ -134,24 +146,27 @@ class FirstOf(Authenticator):
     def __init__(self, *methods):
         """
         Create a new FirstOf authentication method that will attempt to
-        authenticate using the specified authentication methods.
+        authenticate using the specified Authenticator instances.
         """
-        self.methods = methods
+        self._methods = [e for m in methods for e in (m._methods if type(m) is FirstOf else [m])]
     
-    def authenticate(self, transport):
+    def authenticate(self, transport, username):
         failures = []
-        for method in self.methods:
+        for method in self._methods:
             try:
-                method.authenticate(transport)
+                method.authenticate(transport, username)
                 return
             except paramiko.AuthenticationException as e:
                 failures.append(e)
+        partial_types = [e for e in failures if isinstance(e, PartialAuthentication) for t in e.allowed_types]
+        if partial_types:
+            raise PartialAuthentication(partial_types)
         raise paramiko.AuthenticationException(
             'Authentication methods {0!r} failed with errors {1!r}'
-            .format(self.methods, failures))
+            .format(self._methods, failures))
     
     def __repr__(self):
-        return 'FirstOf({0})'.format(', '.join(repr(m) for m in self.methods))
+        return 'FirstOf({0})'.format(', '.join(repr(m) for m in self._methods))
     
     __str__ = __repr__
 
@@ -160,24 +175,25 @@ class Password(Authenticator):
     """
     An authentication method that authenticates using a password.
     """
-    def __init__(self, username, password, fallback=True):
+    def __init__(self, password, fallback=True):
         """
         Create a Password authentication method that will authenticate using
-        the specified username and password.
+        the specified password.
         
         username, password, and fallback are passed onto the underlying call
         to paramiko.Transport.auth_password.
         """
-        self.username = username
-        self.password = password
-        self.fallback = fallback
+        self._password = password
+        self._fallback = fallback
     
-    def authenticate(self, transport):
-        transport.auth_password(self.username, self.password, fallback=self.fallback)
+    def authenticate(self, transport, username):
+        types = transport.auth_password(username, self._password, fallback=self._fallback)
+        if types:
+            raise PartialAuthentication(types)
     
     def __repr__(self):
-        return ('Password({0!r}, {1!r}, fallback={2!r})'
-                .format(self.username, self.password, self.fallback))
+        # Just in case...
+        return 'Password(...)'
     
     __str__ = __repr__
 
@@ -189,10 +205,10 @@ class Key(Authenticator):
     Currently, only RSA keys are supported, and keys that require a passphrase
     are not yet supported. I plan on adding such support in the near future.
     """
-    def __init__(self, username, key, required=False):
+    def __init__(self, key, required=False):
         """
         Create a Key authentication method that will authenticate using the
-        specified username and private key.
+        specified private key.
         
         The key can be an instance of any subclass of paramiko.PKey (such as
         paramiko.RSAKey), a BaseFile instance (in which case the file in
@@ -204,53 +220,82 @@ class Key(Authenticator):
         AuthenticationException). Otherwise, a
         fileutils.exceptions.FileNotFoundError will be raised.
         """
-        self.username = username
+        # If it's already a PKey instance, just store it
+        if isinstance(key, paramiko.PKey):
+            self._key = key
+            return
         # If it's a file path, convert it into a File instance
         if isinstance(key, basestring):
             key = local.File(key)
-        # Then try to load it
-        if isinstance(key, paramiko.PKey):
-            self.key = key
-        elif isinstance(key, BaseFile):
+        # If it's a BaseFile instance, open it.
+        if isinstance(key, BaseFile):
             try:
-                stream = key.open()
+                key = key.open()
             except exceptions.FileNotFoundError:
                 if required:
                     raise
                 else:
-                    self.key = None
-            else:
-                # TODO: Add support for other types besides RSAKey... Can we
-                # detect the type of key on the fly? Also add support for key
-                # passwords.
-                self.key = paramiko.RSAKey.from_private_key(stream)
-        else:
-            raise Exception("Unsupported key type: {0!r}".format(key))
+                    self._key = None
+                    return
+        # It'll be a file-like object at this point
+        for key_type in (paramiko.RSAKey, paramiko.DSSKey,
+                         paramiko.ECDSAKey):
+            try:
+                # TODO: Add support for key passwords
+                self._key = key_type.from_private_key(key)
+                return
+            # I've got https://github.com/paramiko/paramiko/pull/293
+            # open to raise a more specific exception,
+            # KeyFormatException, on invalid key data, but until that
+            # goes through we have to just catch all SSHExceptions here
+            except paramiko.SSHException:
+                # Not a key of this format. Seek the stream back to 0 and then
+                # try the next format.
+                key.seek(0)
+                continue
+        # Key wasn't in any known format, so raise an exception.
+        raise Exception("Unsupported key format")
     
-    def authenticate(self, transport):
+    def authenticate(self, transport, username):
         if self.key is None:
             raise paramiko.AuthenticationException('The underlying key file does not exist')
-        transport.auth_publickey(self.username, self.keys)
+        types = transport.auth_publickey(username, self.keys)
+        if types:
+            raise PartialAuthentication(types)
 
 
 class Agent(Authenticator):
     """
     An authentication method that authenticates using an SSH agent.
     """
-    def __init__(self, username):
+    def __init__(self):
         """
         Create a new Agent authenticate method that will authenticate using the
-        specified username and the keys made available by the local SSH agent.
+        keys made available by the local SSH agent.
         """
         pass
     
-    def authenticate(self, transport):
+    def authenticate(self, transport, username):
         agent = paramiko.Agent()
         keys = agent.get_keys()
-        FirstOf([Key(self.username, key) for key in keys]).authenticate(transport)
+        FirstOf([Key(key) for key in keys]).authenticate(transport, username)
     
     def __repr__(self):
-        return 'Agent({0!r})'.format(self.username)
+        return 'Agent()'
+    
+    __str__ = __repr__
+
+
+class User(FirstOf):
+    def __init__(self, username, *authenticators):
+        FirstOf.__init__(self, *authenticators)
+        self._username = username
+    
+    def authenticate(self, transport, username):
+        FirstOf.authenticate(self, transport, self._username)
+    
+    def __repr__(self):
+        return 'User({0})'.format(', '.join(repr(m) for m in self._methods))
     
     __str__ = __repr__
 
