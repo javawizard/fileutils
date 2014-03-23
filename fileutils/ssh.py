@@ -131,11 +131,15 @@ class Authenticator(object):
     """
     Class of methods that can be used to authenticate to an SSH server.
     
-    The various subclasses
+    These are wrappers around the various paramiko.Transport.auth_* methods.
     """
     def authenticate(self, transport):
         """
         Authenticate to the specified transport using this method.
+        
+        If authentication fails, AuthenticationException will be raised. If
+        authentication succeeds but multi-factor authentication is required,
+        PartialAuthentication will be raised.
         """
         raise NotImplementedError
 
@@ -147,9 +151,9 @@ class FirstOf(Authenticator):
     
     If one of them raises PartialAuthentication to indicate that it succeeded
     but didn't conclude authentication, FirstOf continues on with the rest of
-    the authentication methods, then re-raises PartialAuthentication. I'm still
-    debating exactly how partial authentication should work, so this could
-    change.
+    the authentication methods, then re-raises PartialAuthentication if none of
+    them concluded authentication. I'm still debating exactly how partial
+    authentication should work, so this could change.
     """
     def __init__(self, *methods):
         """
@@ -188,8 +192,8 @@ class Password(Authenticator):
         Create a Password authentication method that will authenticate using
         the specified password.
         
-        username, password, and fallback are passed onto the underlying call
-        to paramiko.Transport.auth_password.
+        username, password, and fallback are passed to the underlying call to
+        paramiko.Transport.auth_password.
         """
         self._password = password
         self._fallback = fallback
@@ -210,8 +214,8 @@ class Key(Authenticator):
     """
     An authentication method that authenticates using a private key.
     
-    Currently, only RSA keys are supported, and keys that require a passphrase
-    are not yet supported. I plan on adding such support in the near future.
+    Currently, keys that require a passphrase are not yet supported. I plan on
+    adding such support in the near future.
     """
     def __init__(self, key, required=False):
         """
@@ -220,8 +224,9 @@ class Key(Authenticator):
         
         The key can be an instance of any subclass of paramiko.PKey (such as
         paramiko.RSAKey), a BaseFile instance (in which case the file in
-        question will be read and its contents used as the key), or a string
-        representing a local path to a key file.
+        question will be read and its contents used as the key), a string
+        representing a local path to a key file, or a seekable file-like
+        object.
         
         If required is False and key is a BaseFile or a local path that does
         not exist, the returned Key instance will do nothing (but raise an
@@ -274,7 +279,7 @@ class Key(Authenticator):
 
 class Agent(Authenticator):
     """
-    An authentication method that authenticates using an SSH agent.
+    An authentication method that authenticates using the local SSH agent.
     """
     def __init__(self):
         """
@@ -295,7 +300,20 @@ class Agent(Authenticator):
 
 
 class User(FirstOf):
+    """
+    An authenticator that causes the authenticator it wraps to authenticate
+    using an alternative username.
+    
+    Instances of this class can be used to attempt to authenticate with several
+    different usernames thus:
+    
+        FirstOf(User('foo', Password(...)), User('bar', Key(...)))
+    """
     def __init__(self, username, *authenticators):
+        """
+        Create a new User instance that will authenticate using the specified
+        username and authenticators.
+        """
         FirstOf.__init__(self, *authenticators)
         self._username = username
     
