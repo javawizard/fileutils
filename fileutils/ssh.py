@@ -62,7 +62,7 @@ class SSHFileSystem(FileSystem):
     
     @staticmethod
     def connect(host, username=None, password=None, port=22,
-                authenticators=None):
+                auth=None):
         """
         Connect to an SSH server and return an SSHFileSystem connected to the
         server.
@@ -71,25 +71,27 @@ class SSHFileSystem(FileSystem):
         attempted. If username is None, the current user's username will be
         used.
         """
+        authenticators = []
+        if isinstance(auth, Authenticator):
+            authenticators.append(auth)
+        elif isinstance(auth, list):
+            authenticators.extend(auth)
+        authenticators.append(SSHFileSystem.get_default_authenticator())
+        if password:
+            authenticators.append(Password(password))
         if username is None:
             username = getpass.getuser()
         transport = paramiko.Transport((host, port))
         try:
             transport.start_client()
-            if password:
-                transport.auth_password(username, password)
-            else:
-                # This will raise an exception if the user doesn't have a
-                # ~/.ssh/id_rsa, which we just pass on
-                key = paramiko.RSAKey.from_private_key_file(os.path.expanduser("~/.ssh/id_rsa"))
-                transport.auth_publickey(username, key)
-            return SSHFileSystem(transport, client_name=username + "@" + host)
+            FirstOf(*authenticators).authenticate(transport, username)
+            return SSHFileSystem(transport, client_name=transport.get_username() + "@" + host)
         except:
             transport.close()
             raise
     
     @staticmethod
-    def get_default_authenticators():
+    def get_default_authenticator():
         return FirstOf(
             Agent(),
             Key(os.path.expanduser('~/.ssh/id_rsa')),
@@ -142,6 +144,12 @@ class FirstOf(Authenticator):
     """
     An authentication method that tries several other methods and succeeds once
     one of them does. If all of the methods fail, it fails.
+    
+    If one of them raises PartialAuthentication to indicate that it succeeded
+    but didn't conclude authentication, FirstOf continues on with the rest of
+    the authentication methods, then re-raises PartialAuthentication. I'm still
+    debating exactly how partial authentication should work, so this could
+    change.
     """
     def __init__(self, *methods):
         """
@@ -158,7 +166,7 @@ class FirstOf(Authenticator):
                 return
             except paramiko.AuthenticationException as e:
                 failures.append(e)
-        partial_types = [e for e in failures if isinstance(e, PartialAuthentication) for t in e.allowed_types]
+        partial_types = [t for e in failures if isinstance(e, PartialAuthentication) for t in e.allowed_types]
         if partial_types:
             raise PartialAuthentication(partial_types)
         raise paramiko.AuthenticationException(
@@ -257,9 +265,9 @@ class Key(Authenticator):
         raise Exception("Unsupported key format")
     
     def authenticate(self, transport, username):
-        if self.key is None:
+        if self._key is None:
             raise paramiko.AuthenticationException('The underlying key file does not exist')
-        types = transport.auth_publickey(username, self.keys)
+        types = transport.auth_publickey(username, self._key)
         if types:
             raise PartialAuthentication(types)
 
@@ -278,7 +286,7 @@ class Agent(Authenticator):
     def authenticate(self, transport, username):
         agent = paramiko.Agent()
         keys = agent.get_keys()
-        FirstOf([Key(key) for key in keys]).authenticate(transport, username)
+        FirstOf(*[Key(key) for key in keys]).authenticate(transport, username)
     
     def __repr__(self):
         return 'Agent()'
