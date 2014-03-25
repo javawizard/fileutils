@@ -111,6 +111,7 @@ class FTPFile(ChildrenMixin, BaseFile):
         except ftplib.Error:
             pass
         else:
+            # We were able to get its contents; delete them.
             for name in child_names:
                 self.child(name).delete(recursive=recursive)
         # Now try to delete it as a directory.
@@ -127,5 +128,22 @@ class FTPFile(ChildrenMixin, BaseFile):
             raise Exception("Couldn't delete {0!r}".format(self))
         if not ignore_missing:
             raise Exception("Tried to delete a file that doesn't exist")
+    
+    def get_path_components(self, relative_to=None):
+        if relative_to:
+            if not isinstance(relative_to, FTPFile):
+                raise ValueError("relative_to must be another FTPFile "
+                                 "instance")
+            return posixpath.relpath(self._path, relative_to._path).split("/")
+        return self._path.split("/")
+    
+    @property
+    def link_target(self):
+        return None
+    
+    @property
+    def size(self):
+        # TODO: Make this work for directories
+        return self._client.size(self._path)
 
 
