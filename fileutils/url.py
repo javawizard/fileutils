@@ -2,8 +2,10 @@ from fileutils.interface import BaseFile, FileSystem
 from fileutils.constants import FILE, LINK
 from fileutils.local import File as _File
 from fileutils.ssh import SSHFile as _SSHFile
-import urllib2
-import urlparse
+try:
+    import urllib2, urlparse
+except ImportError:
+    from urllib import request as urllib2, parse as urlparse
 import os.path
 
 try:

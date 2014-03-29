@@ -1,3 +1,4 @@
+from __future__ import print_function
 from fileutils.interface import BaseFile, FileSystem, MountPoint, DiskUsage, Usage
 from fileutils.mixins import ChildrenMixin, DefaultMountDevice
 from fileutils.constants import FILE, FOLDER, LINK
@@ -13,8 +14,10 @@ import zipfile as zip_module
 import glob as _glob
 import tempfile
 import atexit
-import urlparse
-import urllib
+try:
+    from urllib import parse as urlparse
+except ImportError:
+    import urlparse
 import string
 import errno
 import subprocess
@@ -39,7 +42,7 @@ def _():
         try:
             f.delete(ignore_missing=True)
         except:
-            print "WARNING: Couldn't delete local file {0!r}:".format(f.path)
+            print("WARNING: Couldn't delete local file {0!r}:".format(f.path))
             traceback.print_exc()
 
 
