@@ -82,6 +82,7 @@ class SSHFileSystem(FileSystem):
         if username is None:
             username = getpass.getuser()
         transport = paramiko.Transport((host, port))
+        transport.window_size = 2**26 # 64 MB
         try:
             transport.start_client()
             FirstOf(*authenticators).authenticate(transport, username)
@@ -113,7 +114,7 @@ class SSHFileSystem(FileSystem):
     
     def __exit__(self, *args):
         self._enter_count -= 1
-        if self._filesystem._enter_count == 0:
+        if self._enter_count == 0:
             self.close()
     
     def child(self, *path_components):
@@ -127,6 +128,7 @@ class SSHFileSystem(FileSystem):
         return "<fileutils.SSHFileSystem on {0!s}>".format(self._client_name)
 
 
+<<<<<<< HEAD
 class Authenticator(object):
     """
     Class of methods that can be used to authenticate to an SSH server.
