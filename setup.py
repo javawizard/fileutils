@@ -6,5 +6,7 @@ setup(
     description="An object-oriented file access library",
     author="Alexander Boyd",
     author_email="alex@opengroove.org",
-    packages=["fileutils"]
+    setup_requires=["nose>=1.0"],
+    packages=["fileutils"],
+    tests_require=["coverage"]
 )

@@ -511,7 +511,8 @@ class File(ChildrenMixin, BaseFile):
         If you need to restore the working directory at any point, you might
         want to consider using :obj:`self.as_working <as_working>` instead.
         """
-        os.chdir(self.path)
+        with Convert():
+            os.chdir(self.path)
 
     def create_folder(self, ignore_existing=False, recursive=False):
         """

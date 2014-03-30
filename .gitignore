@@ -1,7 +1,11 @@
 /dist
 /*.egg-info
+/*.egg
 /MANIFEST
 **/*.pyc
 .project
 .pydevproject
+.coverage
+/cover
+
 
