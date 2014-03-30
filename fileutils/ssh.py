@@ -128,7 +128,6 @@ class SSHFileSystem(FileSystem):
         return "<fileutils.SSHFileSystem on {0!s}>".format(self._client_name)
 
 
-<<<<<<< HEAD
 class Authenticator(object):
     """
     Class of methods that can be used to authenticate to an SSH server.
