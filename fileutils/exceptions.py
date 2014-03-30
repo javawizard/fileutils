@@ -5,22 +5,40 @@ Backport of Python 3.3's reworked OS/IO exception hierarchy (see PEP 3151).
 import os
 import errno
 
-class BlockingIOError(OSError): pass
-class ChildProcessError(OSError): pass
-class ConnectionError(OSError): pass
-class FileExistsError(OSError): pass
-class FileNotFoundError(OSError): pass
-class InterruptedError(OSError): pass
-class IsADirectoryError(OSError): pass
-class NotADirectoryError(OSError): pass
-class PermissionError(OSError): pass
-class ProcessLookupError(OSError): pass
-class TimeoutError(OSError): pass
-
-class BrokenPipeError(ConnectionError): pass
-class ConnectionAbortedError(ConnectionError): pass
-class ConnectionRefusedError(ConnectionError): pass
-class ConnectionResetError(ConnectionError): pass
+try:
+    BlockingIOError = BlockingIOError
+    ChildProcessError = ChildProcessError
+    ConnectionError = ConnectionError
+    FileExistsError = FileExistsError
+    FileNotFoundError = FileNotFoundError
+    InterruptedError = InterruptedError
+    IsADirectoryError = IsADirectoryError
+    NotADirectoryError = NotADirectoryError
+    PermissionError = PermissionError
+    ProcessLookupError = ProcessLookupError
+    TimeoutError = TimeoutError
+    
+    BrokenPipeError = BrokenPipeError
+    ConnectionAbortedError = ConnectionAbortedError
+    ConnectionRefusedError = ConnectionRefusedError
+    ConnectionResetError = ConnectionResetError
+except NameError: # Python 2, so define backported exceptions
+    class BlockingIOError(OSError): pass
+    class ChildProcessError(OSError): pass
+    class ConnectionError(OSError): pass
+    class FileExistsError(OSError): pass
+    class FileNotFoundError(OSError): pass
+    class InterruptedError(OSError): pass
+    class IsADirectoryError(OSError): pass
+    class NotADirectoryError(OSError): pass
+    class PermissionError(OSError): pass
+    class ProcessLookupError(OSError): pass
+    class TimeoutError(OSError): pass
+    
+    class BrokenPipeError(ConnectionError): pass
+    class ConnectionAbortedError(ConnectionError): pass
+    class ConnectionRefusedError(ConnectionError): pass
+    class ConnectionResetError(ConnectionError): pass
 
 class_table = {
     # Subclasses of OSError

@@ -15,6 +15,11 @@ except ImportError:
     paramiko = None
     PartialAuthentication = None
 
+try:
+    basestring
+except NameError: # Python 3
+    basestring = str
+
 
 class SSHFileSystem(FileSystem):
     """
