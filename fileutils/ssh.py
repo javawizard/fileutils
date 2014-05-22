@@ -106,6 +106,10 @@ class SSHFileSystem(FileSystem):
             Key(os.path.expanduser('~/ssh/id_dsa')),
         )
     
+    @staticmethod
+    def get_default_user(host):
+        pass
+    
     def close(self):
         if self._autoclose:
             self._transport.close()
@@ -139,7 +143,7 @@ class Authenticator(object):
     
     These are wrappers around the various paramiko.Transport.auth_* methods.
     """
-    def authenticate(self, transport):
+    def authenticate(self, transport, username):
         """
         Authenticate to the specified transport using this method.
         
@@ -152,19 +156,19 @@ class Authenticator(object):
 
 class FirstOf(Authenticator):
     """
-    An authentication method that tries several other methods and succeeds once
-    one of them does. If all of the methods fail, it fails.
+    An authenticator that tries several other methods and succeeds once one of
+    them does. If all of the methods fail, it fails.
     
     If one of them raises PartialAuthentication to indicate that it succeeded
     but didn't conclude authentication, FirstOf continues on with the rest of
-    the authentication methods, then re-raises PartialAuthentication if none of
-    them concluded authentication. I'm still debating exactly how partial
+    the authenticators, then re-raises PartialAuthentication if none of them
+    concluded authentication. I'm still debating exactly how partial
     authentication should work, so this could change.
     """
     def __init__(self, *methods):
         """
-        Create a new FirstOf authentication method that will attempt to
-        authenticate using the specified Authenticator instances.
+        Create a new FirstOf authenticator that will attempt to authenticate
+        using the specified Authenticator instances.
         """
         self._methods = [e for m in methods for e in (m._methods if type(m) is FirstOf else [m])]
     
@@ -180,7 +184,7 @@ class FirstOf(Authenticator):
         if partial_types:
             raise PartialAuthentication(partial_types)
         raise paramiko.AuthenticationException(
-            'Authentication methods {0!r} failed with errors {1!r}'
+            'Authenticators {0!r} failed with errors {1!r}'
             .format(self._methods, failures))
     
     def __repr__(self):
@@ -191,12 +195,12 @@ class FirstOf(Authenticator):
 
 class Password(Authenticator):
     """
-    An authentication method that authenticates using a password.
+    An authenticator that authenticates using a password.
     """
     def __init__(self, password, fallback=True):
         """
-        Create a Password authentication method that will authenticate using
-        the specified password.
+        Create a Password authenticatior that will authenticate using the
+        sspecified password.
         
         username, password, and fallback are passed to the underlying call to
         paramiko.Transport.auth_password.
@@ -218,15 +222,17 @@ class Password(Authenticator):
 
 class Key(Authenticator):
     """
-    An authentication method that authenticates using a private key.
+    An authenticator that authenticates using a private key.
     
-    Currently, keys that require a passphrase are not yet supported. I plan on
-    adding such support in the near future.
+    Currently, keys that require a passphrase are only indirectly supported:
+    they must be manually loaded into a paramiko.PKey instance, and the
+    instance passed to this class's constructor.  I plan to add proper support
+    in the near future.
     """
     def __init__(self, key, required=False):
         """
-        Create a Key authentication method that will authenticate using the
-        specified private key.
+        Create a Key authenticator that will authenticate using the specified
+        private key.
         
         The key can be an instance of any subclass of paramiko.PKey (such as
         paramiko.RSAKey), a BaseFile instance (in which case the file in
@@ -285,12 +291,12 @@ class Key(Authenticator):
 
 class Agent(Authenticator):
     """
-    An authentication method that authenticates using the local SSH agent.
+    An authenticator that authenticates using the local SSH agent.
     """
     def __init__(self):
         """
-        Create a new Agent authenticate method that will authenticate using the
-        keys made available by the local SSH agent.
+        Create a new Agent authenticator that will authenticate using the keys
+        made available by the local SSH agent.
         """
         pass
     
@@ -313,7 +319,8 @@ class User(FirstOf):
     Instances of this class can be used to attempt to authenticate with several
     different usernames thus:
     
-        FirstOf(User('foo', Password(...)), User('bar', Key(...)))
+        auth = FirstOf(User('foo', Password(...)), User('bar', Key(...)))
+        fs = SSHFileSystem.connect(..., auth=auth)
     """
     def __init__(self, username, *authenticators):
         """
@@ -327,7 +334,7 @@ class User(FirstOf):
         FirstOf.authenticate(self, transport, self._username)
     
     def __repr__(self):
-        return 'User({0})'.format(', '.join(repr(m) for m in self._methods))
+        return 'User({0})'.format(', '.join(repr(m) for m in [self._username] + self._methods))
     
     __str__ = __repr__
 

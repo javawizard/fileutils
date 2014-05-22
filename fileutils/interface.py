@@ -11,6 +11,9 @@ from fileutils.exceptions import generate
 from fileutils import exceptions
 import hashlib
 import collections
+import string
+import random
+import tempfile
 
 __all__ = ["FileSystem", "MountPoint", "MountDevice", "DiskUsage", "Usage",
            "BaseFile"]
@@ -150,6 +153,18 @@ class FileSystem(object):
         The default implementation of this method just returns None.
         """
         return None
+    
+    @property
+    def temporary_directory(self):
+        """
+        A :obj:`BaseFile` instance pointing to a directory on this file system
+        in which temporary files and directories can be placed, or None if this
+        file system exposes no such directory.
+        
+        LocalFileSystem and SSHFileSystem all expose a temporary directory;
+        only file systems like FTPFileSystem and URLFileSystem do not.
+        """
+        return None
 
 
 class MountPoint(object):
@@ -174,7 +189,7 @@ class MountPoint(object):
         The :obj:`BaseFile` instance indicating the directory at which this
         mount point is mounted.
         """
-        raise NotImplementedError
+        return None
     
     @property
     def devices(self):
@@ -191,7 +206,7 @@ class MountPoint(object):
         device attached to the mount point to be popped off the stack, and the
         next device's data is made available at that mount point.
         """
-        raise NotImplementedError
+        return []
     
     @property
     def device(self):
@@ -216,7 +231,7 @@ class MountPoint(object):
         usage for this mount point, or None if this MountPoint implementation
         does not expose disk usage information.
         """
-        raise NotImplementedError
+        return None
     
     def unmount(self, force=True):
         """
@@ -231,28 +246,28 @@ class MountPoint(object):
         r"""
         Shorthand for self.\ :obj:`usage <usage>`.\ :obj:`space <DiskUsage.space>`.\ :obj:`total <Usage.total>`.
         """
-        return self.usage.space.total
+        return self.usage and self.usage.space.total
     
     @property
     def used_space(self):
         r"""
         Shorthand for self.\ :obj:`usage <usage>`.\ :obj:`space <DiskUsage.space>`.\ :obj:`used <Usage.used>`.
         """
-        return self.usage.space.used
+        return self.usage and self.usage.space.used
     
     @property
     def available_space(self):
         r"""
         Shorthand for self.\ :obj:`usage <usage>`.\ :obj:`space <DiskUsage.space>`.\ :obj:`available <Usage.available>`.
         """
-        return self.usage.space.available
+        return self.usage and self.usage.space.available
     
     @property
     def free_space(self):
         r"""
         Shorthand for self.\ :obj:`usage <usage>`.\ :obj:`space <DiskUsage.space>`.\ :obj:`free <Usage.free>`.
         """
-        return self.usage.space.free
+        return self.usage and self.usage.space.free
 
 
 class MountDevice(object):
@@ -985,6 +1000,37 @@ class BaseFile(object):
         self.create_folder(ignore_existing=silent, recursive=True)
     
     makedirs = mkdirs
+    
+    def mkdtemp(self):
+        # TODO: Write up a more proper implementation that allows a function or
+        # generator of some sort to be used to generate names instead, and see
+        # if it can be written in such a way as to be used with copy_to to
+        # allow conflicting files to be renamed on request.
+        names = tempfile._get_candidate_names()
+        for _ in range(20):
+            name = "tmp" + next(names) + next(names)
+            f = self.child(name)
+            try:
+                # TODO: Create this by default with permissions such that only
+                # we have access to it, like tempfile.mkdtemp does
+                f.mkdir()
+                return f
+            except exceptions.FileExistsError:
+                continue
+            except IOError:
+                # Really ugly hack: SFTP v3 (and hence Paramiko) doesn't have
+                # any support for indicating that a mkdir failed because the
+                # directory in question already exists, so we assume that any
+                # failure is because the directory already exists. There's not
+                # much wrong with this approach other than taking an inordinate
+                # amount of time to fail when the real issue is, say, related
+                # to permissions, and annoyingly breaking encapsulation in
+                # quite a glaring manner.
+                from fileutils.ssh import SSHFile
+                if isinstance(self, SSHFile):
+                    continue
+                else:
+                    raise
 
     def write(self, data, binary=True):
         """

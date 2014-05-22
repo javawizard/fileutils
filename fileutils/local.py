@@ -103,6 +103,10 @@ class LocalFileSystem(FileSystem):
             location = file_to_cache.copy_into(cache)
             return LocalCache(cache, location)
     
+    @property
+    def temporary_directory(self):
+        return self.child(tempfile.gettempdir())
+    
     def __cmp__(self, other):
         if other is _local_file_system:
             return 0
@@ -223,6 +227,12 @@ class PosixLocalMountPoint(LocalMountPoint):
 class WindowsMountPoint(LocalMountPoint):
     def __init__(self, location):
         self._location = location
+    
+    @property
+    def location(self):
+        return self._location
+    
+    
 
 
 _local_file_system = LocalFileSystem()
