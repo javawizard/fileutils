@@ -7,6 +7,7 @@ import posixpath
 import stat
 import pipes
 import getpass
+import sys
 
 try:
     import paramiko
@@ -67,25 +68,22 @@ class SSHFileSystem(FileSystem):
     
     @staticmethod
     def connect(host, username=None, password=None, port=22,
-                auth=None):
+                auth=None, default_auth=True):
         """
         Connect to an SSH server and return an SSHFileSystem connected to the
         server.
-        
-        If password is None, authentication with ~/.ssh/id_rsa will be
-        attempted. If username is None, the current user's username will be
-        used.
         """
         authenticators = []
         if isinstance(auth, Authenticator):
             authenticators.append(auth)
         elif isinstance(auth, list):
             authenticators.extend(auth)
-        authenticators.append(SSHFileSystem.get_default_authenticator())
         if password:
             authenticators.append(Password(password))
+        if default_auth:
+            authenticators.append(SSHFileSystem.get_default_authenticator())
         if username is None:
-            username = getpass.getuser()
+            username = SSHFileSystem.get_default_user(host)
         transport = paramiko.Transport((host, port))
         transport.window_size = 2**26 # 64 MB
         try:
@@ -104,11 +102,24 @@ class SSHFileSystem(FileSystem):
             Key(os.path.expanduser('~/.ssh/id_dsa')),
             Key(os.path.expanduser('~/ssh/id_rsa')),
             Key(os.path.expanduser('~/ssh/id_dsa')),
+            InteractivePassword()
         )
     
     @staticmethod
     def get_default_user(host):
-        pass
+        for f in [
+            os.path.expanduser('~/.ssh/config'),
+            os.path.expanduser('~/ssh/config'),
+            '/etc/ssh/ssh_config'
+        ]:
+            if local.File(f).exists:
+                config = paramiko.SSHConfig()
+                with local.File(f).open('r') as stream:
+                    config.parse(stream)
+                d = config.lookup(host)
+                if 'user' in d:
+                    return d['user']
+        return getpass.getuser()
     
     def close(self):
         if self._autoclose:
@@ -218,6 +229,37 @@ class Password(Authenticator):
         return 'Password(...)'
     
     __str__ = __repr__
+
+
+class InteractivePassword(Authenticator):
+    """
+    An authenticator that interactively prompts the user for a password and
+    authenticates with it.
+    """
+    def __init__(self, attempts=3, require_tty=True):
+        self._attempts = attempts
+        self._require_tty = require_tty
+    
+    def authenticate(self, transport, username):
+        if self._require_tty and not sys.stdin.isatty():
+            raise paramiko.AuthenticationException('stdin is not a tty, not '
+                                                   'prompting for a password')
+        # Annoying that we don't really have access to the hostname here... Do
+        # the best that we can under the circumstances.
+        ip = transport.getpeername()[0]
+        for attempt in range(self._attempts):
+            password = getpass.getpass(username + '@' + ip + "'s password: ")
+            try:
+                Password(password).authenticate(transport, username)
+                return
+            except PartialAuthentication:
+                raise
+            except paramiko.AuthenticationException:
+                if attempt == self._attempts - 1:
+                    print 'Permission denied.'
+                else:
+                    print 'Permission denied, please try again.'
+        raise paramiko.AuthenticationException('All provided passwords failed.')
 
 
 class Key(Authenticator):
