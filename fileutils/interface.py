@@ -748,6 +748,43 @@ class BaseFile(object):
         new_file = other.child(self.name)
         self.copy_to(new_file, overwrite, dereference_links, which_attributes)
         return new_file
+    
+    def merge_to(self, other, dereference_links=True, which_attributes={}):
+        """
+        Merges this directory (or file) into the specified directory.
+        Specifically:
+        
+         * If other does not exist, a straightforward copy is performed as if
+           by self.copy_to(other).
+         * If self is something other than a folder, or if self is a folder and
+           other is something other than a folder, other is removed and a
+           straightforward copy is performed as if by self.copy_to(other).
+         * Otherwise, the children of self are recursively merged into other as
+           if by c.merge_to(other.child(c.name)), for every child c in
+           self.children.
+        """
+        # Dereference ourselves if dereference_links is True
+        if dereference_links:
+            source = self.dereference(True)
+        else:
+            source = self
+        other_type = other.type
+        if other_type is None: # other doesn't exist, so just copy
+            source.copy_to(other, dereference_links=dereference_links,
+                           which_attributes=which_attributes)
+            return
+        source_type = source.type
+        if source_type != FOLDER or other_type != FOLDER:
+            # One of them's something other than a folder, so just copy
+            source.copy_to(other, overwrite=True,
+                           dereference_links=dereference_links,
+                           which_attributes=which_attributes)
+            return
+        
+        # Both are folders that exist, so recursively merge each of our
+        # children into other.
+        for c in source.children:
+            c.merge_to(other.child(c.name))
 
     def dereference(self, recursive=False):
         """
